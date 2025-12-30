@@ -1,0 +1,13 @@
+.section .text
+.global main
+main:
+    addi sp, sp, -16
+    sw ra, 12(sp)
+    li t0, 10
+    li t1, 5
+    li t2, 4
+    mv t0, t2
+    lw ra, 12(sp)
+    addi sp, sp, 16
+    ret
+
