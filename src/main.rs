@@ -1,11 +1,12 @@
+extern crate chumsky;
+
 use std::process;
 use std::env;
 use std::fs;
 
-mod parser;
-mod ast;
-mod verifier;
-mod generator;
+mod frontend;
+mod ir;
+mod backend;
 
 struct Config {
     source: String,
@@ -36,7 +37,7 @@ impl Config {
 }
 
 fn main() {
-    let config = Config::build(env::args).unwrap_or_else(|err| {
+    let config = Config::build(env::args()).unwrap_or_else(|err| {
         println!("Error parsing arguments: {err}");
         process::exit(1);
     });
@@ -46,18 +47,19 @@ fn main() {
         process::exit(1);
     });
 
-    let ast = parser::parse(&source_code).unwrap_or_else(|err| {
-        println!("Error parsing source code: {err}");
+    let ast = frontend::parser::parse(&source_code).unwrap_or_else(|err| {
+        println!("Error parsing source code: {:?}", err);
         process::exit(1);
     });
 
-    if let Err(err) = verifier::verify(&ast) {
-        println!("Error verifying program: {err}");
-        process::exit(1);
-    }
+    // TODO: Implement verification on AST
+    // if let Err(err) = ir::verifier::verify(&ast) {
+    //     println!("Error verifying program: {err}");
+    //     process::exit(1);
+    // }
 
-    let output = generator::generate(&ast).unwrap_or_else(|err| {
-        println!("Error during code generation: {err}");
+    let output = backend::compile(&ast).unwrap_or_else(|err| {
+        println!("Error during compilation backend: {}", err);
         process::exit(1);
     });
 

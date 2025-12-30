@@ -21,13 +21,13 @@ pub struct TypeState {
 #[derive(Debug, Clone)]
 pub enum Statement {
     Let { var_name: String, value: Expr },
-    Assign { var_name: String, value, Expr },
+    Assign { var_name: String, value: Expr },
     Expr { expr: Expr },
 }
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    IntLit {value: i32},            // TODO: Check if better as IntLit(i32) and Variable(String)
+    IntLit {value: i32},            // TODO: Test if better as IntLit(i32) and Variable(String)
     FnCall { name: String, args: Vec<Expr> },
     Variable { name: String },
 }

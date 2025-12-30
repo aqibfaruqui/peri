@@ -1,4 +1,4 @@
-use crate::ast;
+use crate::frontend::ast;
 use chumsky::prelude::*;
 use chumsky::Parser;
 
@@ -6,14 +6,19 @@ pub fn parse(source_code: &str) -> Result<ast::Program, Vec<chumsky::error::Simp
     parser()
         .parse(source_code)
         .into_result()
-        .map_err(|errs| errs.into_iter().map(|e| e.into_simple()).collect())
 }
 
 fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simple<'src, char>>> {
     // All of our 'atoms' (like identifiers, keywords, symbols)
     // are '.padded()' to ignore whitespace around them.
-    let ident = text::ident().padded();
-    let int_lit = text::int(10).map(|s: &str| s.parse::<i32>().unwrap()).padded();
+    let ident = text::ident()
+        .padded()
+        .map(|s: &str| s.to_string());
+
+    let int_lit = text::int(10)
+        .map(|s: &str| s.parse::<i32>().unwrap())
+        .padded();
+        
     let comma = just(',').padded();
 
     /* 
@@ -23,7 +28,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
     let expr = recursive(|expr| {
 
         let val = int_lit
-            .map(|value: i32| ast::Expr::Literal { value });
+            .map(|value: i32| ast::Expr::IntLit { value });
 
         let fn_call = ident
             .then(
@@ -78,7 +83,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         .ignore_then(type_state)
         .then_ignore(just("->").padded())
         .then(type_state)
-        .map(|((type_1, state_1), (type_2, state_2))| ast::TypestateSig {
+        .map(|((type_1, state_1), (_type_2, state_2))| ast::TypeState {
             peripheral: type_1,
             input_state: state_1,
             output_state: state_2
@@ -119,5 +124,5 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         .repeated()
         .collect()
         .map(|functions| ast::Program { functions })
-        .then_ignore(end());
+        .then_ignore(end())
 }
