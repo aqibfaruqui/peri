@@ -23,6 +23,8 @@ pub enum Statement {
     Let { var_name: String, value: Expr },
     Assign { var_name: String, value: Expr },
     Expr { expr: Expr },
+    If { cond: Expr, then_block: Vec<Statement>, else_block: Vec<Statement>},
+    While { cond: Expr, body: Vec<Statement>},
 }
 
 #[derive(Debug, Clone)]

@@ -48,9 +48,14 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
 
     /*
      * Statement Parser 
-     * A statement atom is a Let, Assign or Expr
+     * A statement atom is a Let, Assign, Expr, If or While
      */
-    let statement = {
+    let statement = recursive(|statement| {
+
+        let block = statement.clone()
+            .repeated()
+            .collect()
+            .delimited_by(just('{').padded(), just('}').padded());
 
         let let_stmt = text::keyword("let").padded()
             .ignore_then(ident)
@@ -69,8 +74,31 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             .then_ignore(just(';').padded())
             .map(|expr| ast::Statement::Expr { expr });
 
-        let_stmt.or(assign_stmt).or(expr_stmt)
-    };
+        let if_stmt = text::keyword("if").padded()
+            .ignore_then(expr.clone())
+            .then(block.clone())
+            .then(
+                text::keyword("else").padded()
+                .ignore_then(block.clone())
+                .or_not()
+            )
+            .map(|((cond, then_block), else_block)| ast::Statement::If {
+                cond,
+                then_block,
+                else_block: else_block.unwrap_or_default()
+            });
+
+        let while_stmt = text::keyword("while").padded()
+            .ignore_then(expr.clone())
+            .then(block.clone())
+            .map(|(cond, body)| ast::Statement::While { cond, body });
+
+        if_stmt
+            .or(while_stmt)
+            .or(let_stmt)
+            .or(assign_stmt)
+            .or(expr_stmt)
+    });
 
     /*
      * Typestate Signature Parser
