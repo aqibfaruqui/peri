@@ -55,6 +55,19 @@ pub fn generate(
                 writeln!(output, "    addi sp, sp, 16")?;
                 writeln!(output, "    ret\n")?;
             }
+
+            Op::Label(label) => {
+                writeln!(output, "{}:", label)?;
+            }
+
+            Op::Jump(target) => {
+                writeln!(output, "    j {}", target)?;
+            }
+
+            Op::BranchIfFalse(target) => {
+                let cond_reg = allocation.get(&instr.args[0]).unwrap();
+                writeln!(output, "    beqz {}, {}", cond_reg, target)?;
+            }
         }
     }
 
