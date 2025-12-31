@@ -6,7 +6,7 @@ pub struct Program {
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
-    pub args: Vec<String>,
+    pub args: Vec<(String, Type)>,
     pub signature: TypeState,
     pub body: Vec<Statement>,
 }
@@ -16,6 +16,11 @@ pub struct TypeState {
     pub peripheral: String,
     pub input_state: String,
     pub output_state: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    I32,
 }
 
 #[derive(Debug, Clone)]

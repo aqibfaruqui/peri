@@ -123,10 +123,18 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
      *      statements 
      *  }'
      */
+    let type_label = text::keyword("i32")
+        .to(ast::Type::I32)
+        .padded();
+
+    let argument = ident
+        .then_ignore(just(':')).padded()
+        .then(type_label)
+
     let function = text::keyword("fn").padded()
         .ignore_then(ident)
         .then(
-            ident
+            argument
                 .separated_by(comma)
                 .allow_trailing()
                 .collect()
