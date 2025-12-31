@@ -6,6 +6,7 @@ struct Context {
     vars: HashMap<String, VirtualRegister>,
     instructions: Vec<Instruction>,
     next_register: usize,
+    label_counter: usize,
 }
 
 impl Context {
@@ -14,6 +15,7 @@ impl Context {
             vars: HashMap::new(),
             instructions: Vec::new(),
             next_register: 0,
+            label_counter: 0,
         }
     }
 
@@ -21,6 +23,12 @@ impl Context {
         let r = VirtualRegister { id: self.next_register };
         self.next_register += 1;
         r
+    }
+
+    fn new_label(&mut self, suffix: &str) -> String {
+        let label = format!(".L{}_{}", self.label_counter, suffix);
+        self.label_counter += 1;
+        label
     }
 
     fn get_register(&self, name: &str) -> VirtualRegister {
@@ -81,6 +89,42 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
 
         ast::Statement::Expr { expr } => {
             lower_expression(ctx, expr);
+        }
+
+        ast::Statement::If { cond, then_block, else_block } => {
+            let cond_reg = lower_expression(ctx, cond);
+            let label_if = ctx.new_label("if");
+            let label_else = ctx.new_label("else");
+            let label_end = ctx.new_label("end");
+            
+            ctx.instructions.push(Instruction::new(Op::Label(label_if), None, vec![]));
+            ctx.instructions.push(Instruction::new(
+                Op::BranchIfFalse(label_else.clone()), 
+                None, 
+                vec![cond_reg]
+            ));
+            for s in then_block { lower_statement(ctx, s); }
+            ctx.instructions.push(Instruction::new(Op::Jump(label_end.clone()), None, vec![]));
+            
+            ctx.instructions.push(Instruction::new(Op::Label(label_else), None, vec![]));
+            for s in else_block { lower_statement(ctx, s); }
+            ctx.instructions.push(Instruction::new(Op::Label(label_end), None, vec![]));
+        }
+
+        ast::Statement::While { cond, body } => {
+            let cond_reg = lower_expression(ctx, cond);
+            let label_while = ctx.new_label("while");
+            let label_end = ctx.new_label("end");
+
+            ctx.instructions.push(Instruction::new(Op::Label(label_while.clone()), None, vec![]));
+            ctx.instructions.push(Instruction::new(
+                Op::BranchIfFalse(label_end.clone()),
+                None,
+                vec![cond_reg]
+            ));
+            for s in body { lower_statement(ctx, s); }
+            ctx.instructions.push(Instruction::new(Op::Jump(label_while), None, vec![]));
+            ctx.instructions.push(Instruction::new(Op::Label(label_end), None, vec![]));
         }
     }
 }
