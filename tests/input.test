@@ -1,5 +1,13 @@
+fn test() :: Timer<Enabled> -> Timer<Enabled> {
+    let z = 4;
+}
+
 fn main() :: Timer<Disabled> -> Timer<Enabled> {
-    let x = 10;
-    let y = 5;
-    x = 4;
+    let x = 1;
+    if x {
+        let y = 10;
+    } else {
+        let y = 20;
+    }
+    test();
 }
