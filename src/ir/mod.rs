@@ -17,11 +17,12 @@ pub struct Instruction {
 pub enum Op {
     LoadImm(i32),       // li t0, 5
     Mov,                // mv t1, t0
+    MovArg(usize),      // mv a0, t1
     Call(String),       // call func
     Ret,                // ret
     Label(String),          // .X_loop_start
     Jump(String),           // j .X_loop_start
-    BranchIfFalse(String)   // beqz t0, .L_end
+    BranchIfFalse(String),  // beqz t0, .L_end
 }
 
 impl Instruction {

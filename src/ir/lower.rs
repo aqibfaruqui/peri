@@ -25,6 +25,7 @@ impl Context {
         r
     }
 
+    // TODO: Fix labels to use same number on different parts of an If/While
     fn new_label(&mut self, suffix: &str) -> String {
         let label = format!(".L{}_{}", self.label_counter, suffix);
         self.label_counter += 1;
@@ -55,10 +56,14 @@ pub fn lower(prog: &ast::Program) -> Vec<(String, Vec<Instruction>)> {
 fn lower_function(func: &ast::Function) -> Vec<Instruction> {
     let mut ctx = Context::new();
 
-    // TODO: distinguish between virtual registers for function arguments and general use
-    for arg in &func.args {
+    for (i, (name, _type)) in func.args.iter().enumerate() {
         let reg = ctx.new_register();
-        ctx.vars.insert(arg.clone(), reg);
+        ctx.vars.insert(name.clone(), reg);
+        ctx.instructions.push(Instruction::new(
+            Op::MovArg(i), 
+            Some(reg),
+            vec![]
+        ));
     }
 
     for stmt in &func.body {

@@ -26,21 +26,29 @@ pub fn generate(
         match &instr.operation {
             Op::LoadImm(val) => {
                 let rd = allocation.get(&instr.destination.unwrap()).unwrap();
-                // TODO: Check portability of 'li' pseudoinstruction
                 writeln!(output, "    li {}, {}", rd, val)?;
             }
 
             Op::Mov => {
                 let rd = allocation.get(&instr.destination.unwrap()).unwrap();
                 let rs = allocation.get(&instr.args[0]).unwrap();
-                // TODO: Check portability of 'mv' pseudoinstruction
                 writeln!(output, "    mv {}, {}", rd, rs)?;
             }
 
+            Op::MovArg(i) => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                // TODO: Panic / Error if i >= 8 (we only have a0...a7)
+                writeln!(output, "    mv {}, a{}", rd, i)?;
+            }
+
             Op::Call(target) => {
-                // TODO: Handle args (move to a0...a7)
-                // TODO: Check portability of 'call' pseudoinstruction
+                for (i, arg) in instr.args.iter().enumerate() {
+                    let rs = allocation.get(arg).unwrap();
+                    writeln!(output, "    mv a{}, {}", i, rs)?;
+                }
+
                 writeln!(output, "    call {}", target)?;
+
                 if let Some(dest) = instr.destination {
                     let rd = allocation.get(&dest).unwrap();
                     writeln!(output, "    mv {}, a0", rd)?;
@@ -49,7 +57,6 @@ pub fn generate(
 
             Op::Ret => {
                 // TODO: Move a return value to a0 
-                // TODO: Check portability of 'ret' pseudoinstruction
                 // TODO: Update stack offsets with calculation of function arguments
                 writeln!(output, "    lw ra, 12(sp)")?;
                 writeln!(output, "    addi sp, sp, 16")?;

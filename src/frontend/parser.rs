@@ -129,7 +129,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
 
     let argument = ident
         .then_ignore(just(':')).padded()
-        .then(type_label)
+        .then(type_label);
 
     let function = text::keyword("fn").padded()
         .ignore_then(ident)

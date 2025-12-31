@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use crate::ir::{VirtualRegister, Instruction};
 
-// TODO: Consider using type alias for register allocation map
 pub type Allocation = HashMap<VirtualRegister, String>;
 
 pub const REGISTERS: [&str; 7] = ["t0", "t1", "t2", "t3", "t4", "t5", "t6"];
 
-pub fn allocate(instructions: &Vec<Instruction>) -> HashMap<VirtualRegister, String> {
+pub fn allocate(instructions: &Vec<Instruction>) -> Allocation {
     let mut map = HashMap::new();
     
     // TODO: Implement live intervals for linear scan
