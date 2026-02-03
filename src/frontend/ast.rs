@@ -3,6 +3,7 @@ pub struct Program {
     pub functions: Vec<Function>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
@@ -11,6 +12,7 @@ pub struct Function {
     pub body: Vec<Statement>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TypeState {
     pub peripheral: String,
@@ -30,6 +32,7 @@ pub enum Statement {
     Expr { expr: Expr },
     If { cond: Expr, then_block: Vec<Statement>, else_block: Vec<Statement>},
     While { cond: Expr, body: Vec<Statement>},
+    Return { expr: Expr },
 }
 
 #[derive(Debug, Clone)]

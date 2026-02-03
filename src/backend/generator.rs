@@ -55,8 +55,12 @@ pub fn generate(
                 }
             }
 
-            Op::Ret => {
-                // TODO: Move a return value to a0 
+            Op::Ret(val) => {
+                if let Some(reg) = val {
+                    let rs = allocation.get(reg).unwrap();
+                    writeln!(output, "    mv a0, {}", rs)?;
+                }
+
                 // TODO: Update stack offsets with calculation of function arguments
                 writeln!(output, "    lw ra, 12(sp)")?;
                 writeln!(output, "    addi sp, sp, 16")?;

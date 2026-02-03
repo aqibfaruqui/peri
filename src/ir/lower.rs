@@ -70,7 +70,7 @@ fn lower_function(func: &ast::Function) -> Vec<Instruction> {
         lower_statement(&mut ctx, stmt);
     }
 
-    ctx.instructions.push(Instruction::new(Op::Ret, None, vec![]));
+    ctx.instructions.push(Instruction::new(Op::Ret(None), None, vec![]));
     ctx.instructions
 }
 
@@ -130,6 +130,16 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             for s in body { lower_statement(ctx, s); }
             ctx.instructions.push(Instruction::new(Op::Jump(label_while), None, vec![]));
             ctx.instructions.push(Instruction::new(Op::Label(label_end), None, vec![]));
+        }
+
+        ast::Statement::Return { expr } => {
+            let value_reg = lower_expression(ctx, expr);
+
+            ctx.instructions.push(Instruction::new(
+                Op::Ret(Some(value_reg)),
+                None,
+                vec![value_reg]
+            ));
         }
     }
 }

@@ -2,7 +2,7 @@ use crate::frontend::ast;
 use chumsky::prelude::*;
 use chumsky::Parser;
 
-pub fn parse(source_code: &str) -> Result<ast::Program, Vec<chumsky::error::Simple<char>>> {
+pub fn parse(source_code: &str) -> Result<ast::Program, Vec<chumsky::error::Simple<'_, char>>> {
     parser()
         .parse(source_code)
         .into_result()
@@ -93,10 +93,16 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             .then(block.clone())
             .map(|(cond, body)| ast::Statement::While { cond, body });
 
+        let return_stmt = text::keyword("return").padded()
+            .ignore_then(expr.clone())
+            .then_ignore(just(';').padded())
+            .map(|expr| ast::Statement::Return { expr });
+
         if_stmt
             .or(while_stmt)
             .or(let_stmt)
             .or(assign_stmt)
+            .or(return_stmt)
             .or(expr_stmt)
     });
 
