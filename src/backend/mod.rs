@@ -1,5 +1,6 @@
 pub mod regalloc;
 pub mod generator;
+pub mod liveness;
 
 use crate::frontend::ast;
 use crate::ir;
@@ -9,10 +10,10 @@ pub fn compile(prog: &ast::Program) -> Result<String, String> {
     let mut assembly = String::new();
 
     for (func_name, cfg) in functions {
-        // TODO: Make regalloc and generator aware of CFG (currently assumes linear instructions)
-        let instructions = cfg.flatten();
+        let allocation = regalloc::allocate(&cfg);
         
-        let allocation = regalloc::allocate(&instructions);
+        // TODO: Make codegen CFG aware
+        let instructions = cfg.flatten();
         let asm = generator::generate(&func_name, &instructions, &allocation)
             .map_err(|e| e.to_string())?;
 
