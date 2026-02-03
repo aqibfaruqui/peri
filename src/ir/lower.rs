@@ -1,21 +1,25 @@
 use crate::frontend::ast;
 use crate::ir::{VirtualRegister, Instruction, Op};
+use crate::ir::cfg::{CFG, BlockId, Terminator};
 use std::collections::HashMap;
 
 struct Context {
     vars: HashMap<String, VirtualRegister>,
-    instructions: Vec<Instruction>,
+    cfg: CFG,
+    current_block: BlockId,
     next_register: usize,
-    label_counter: usize,
 }
 
 impl Context {
     fn new() -> Self {
+        let mut cfg = CFG::new();
+        let entry = cfg.add_block();
+        
         Self {
             vars: HashMap::new(),
-            instructions: Vec::new(),
+            cfg,
+            current_block: entry,
             next_register: 0,
-            label_counter: 0,
         }
     }
 
@@ -25,11 +29,20 @@ impl Context {
         r
     }
 
-    // TODO: Fix labels to use same number on different parts of an If/While
-    fn new_label(&mut self, suffix: &str) -> String {
-        let label = format!(".L{}_{}", self.label_counter, suffix);
-        self.label_counter += 1;
-        label
+    fn new_block(&mut self) -> BlockId {
+        self.cfg.add_block()
+    }
+
+    fn switch_to_block(&mut self, block: BlockId) {
+        self.current_block = block;
+    }
+
+    fn emit(&mut self, instr: Instruction) {
+        self.cfg.block_mut(self.current_block).push(instr);
+    }
+
+    fn set_terminator(&mut self, t: Terminator) {
+        self.cfg.block_mut(self.current_block).set_terminator(t);
     }
 
     fn get_register(&self, name: &str) -> VirtualRegister {
@@ -44,22 +57,22 @@ impl Context {
     }
 }
 
-pub fn lower(prog: &ast::Program) -> Vec<(String, Vec<Instruction>)> {
+pub fn lower(prog: &ast::Program) -> Vec<(String, CFG)> {
     let mut lowered_functions = Vec::new();
     for func in &prog.functions {
-        let instructions = lower_function(func);
-        lowered_functions.push((func.name.clone(), instructions));
+        let cfg = lower_function(func);
+        lowered_functions.push((func.name.clone(), cfg));
     }
     lowered_functions
 }
 
-fn lower_function(func: &ast::Function) -> Vec<Instruction> {
+fn lower_function(func: &ast::Function) -> CFG {
     let mut ctx = Context::new();
 
     for (i, (name, _type)) in func.args.iter().enumerate() {
         let reg = ctx.new_register();
         ctx.vars.insert(name.clone(), reg);
-        ctx.instructions.push(Instruction::new(
+        ctx.emit(Instruction::new(
             Op::MovArg(i), 
             Some(reg),
             vec![]
@@ -70,8 +83,11 @@ fn lower_function(func: &ast::Function) -> Vec<Instruction> {
         lower_statement(&mut ctx, stmt);
     }
 
-    ctx.instructions.push(Instruction::new(Op::Ret(None), None, vec![]));
-    ctx.instructions
+    if matches!(ctx.cfg.block(ctx.current_block).terminator, Terminator::None) {
+        ctx.set_terminator(Terminator::Return(None));
+    }
+
+    ctx.cfg
 }
 
 fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
@@ -85,7 +101,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             let value_reg = lower_expression(ctx, value);
             let target_reg = ctx.get_register(var_name);
             
-            ctx.instructions.push(Instruction::new(
+            ctx.emit(Instruction::new(
                 Op::Mov,
                 Some(target_reg),
                 vec![value_reg]
@@ -98,48 +114,76 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
 
         ast::Statement::If { cond, then_block, else_block } => {
             let cond_reg = lower_expression(ctx, cond);
-            let label_if = ctx.new_label("if");
-            let label_else = ctx.new_label("else");
-            let label_end = ctx.new_label("end");
             
-            ctx.instructions.push(Instruction::new(Op::Label(label_if), None, vec![]));
-            ctx.instructions.push(Instruction::new(
-                Op::BranchIfFalse(label_else.clone()), 
-                None, 
-                vec![cond_reg]
-            ));
-            for s in then_block { lower_statement(ctx, s); }
-            ctx.instructions.push(Instruction::new(Op::Jump(label_end.clone()), None, vec![]));
+            let then_bb = ctx.new_block();
+            let else_bb = ctx.new_block();
+            let merge_bb = ctx.new_block();
             
-            ctx.instructions.push(Instruction::new(Op::Label(label_else), None, vec![]));
-            for s in else_block { lower_statement(ctx, s); }
-            ctx.instructions.push(Instruction::new(Op::Label(label_end), None, vec![]));
+            // Current block branches based on condition
+            ctx.set_terminator(Terminator::Branch {
+                cond: cond_reg,
+                then_block: then_bb,
+                else_block: else_bb,
+            });
+            
+            // Emit then block
+            ctx.switch_to_block(then_bb);
+            for s in then_block {
+                lower_statement(ctx, s);
+            }
+            // If then block doesn't have a terminator, jump to merge
+            if matches!(ctx.cfg.block(ctx.current_block).terminator, Terminator::None) {
+                ctx.set_terminator(Terminator::Jump(merge_bb));
+            }
+            
+            // Emit else block
+            ctx.switch_to_block(else_bb);
+            for s in else_block {
+                lower_statement(ctx, s);
+            }
+            // If else block doesn't have a terminator, jump to merge
+            if matches!(ctx.cfg.block(ctx.current_block).terminator, Terminator::None) {
+                ctx.set_terminator(Terminator::Jump(merge_bb));
+            }
+            
+            // Continue in merge block
+            ctx.switch_to_block(merge_bb);
         }
 
         ast::Statement::While { cond, body } => {
+            let header_bb = ctx.new_block();
+            let body_bb = ctx.new_block();
+            let exit_bb = ctx.new_block();
+            
+            // Current block jumps to loop header
+            ctx.set_terminator(Terminator::Jump(header_bb));
+            
+            // Header evaluates condition and branches
+            ctx.switch_to_block(header_bb);
             let cond_reg = lower_expression(ctx, cond);
-            let label_while = ctx.new_label("while");
-            let label_end = ctx.new_label("end");
-
-            ctx.instructions.push(Instruction::new(Op::Label(label_while.clone()), None, vec![]));
-            ctx.instructions.push(Instruction::new(
-                Op::BranchIfFalse(label_end.clone()),
-                None,
-                vec![cond_reg]
-            ));
-            for s in body { lower_statement(ctx, s); }
-            ctx.instructions.push(Instruction::new(Op::Jump(label_while), None, vec![]));
-            ctx.instructions.push(Instruction::new(Op::Label(label_end), None, vec![]));
+            ctx.set_terminator(Terminator::Branch {
+                cond: cond_reg,
+                then_block: body_bb,
+                else_block: exit_bb,
+            });
+            
+            // Body executes and loops back to header
+            ctx.switch_to_block(body_bb);
+            for s in body {
+                lower_statement(ctx, s);
+            }
+            // If body doesn't have a terminator, jump back to header
+            if matches!(ctx.cfg.block(ctx.current_block).terminator, Terminator::None) {
+                ctx.set_terminator(Terminator::Jump(header_bb));
+            }
+            
+            // Continue in exit block
+            ctx.switch_to_block(exit_bb);
         }
 
         ast::Statement::Return { expr } => {
             let value_reg = lower_expression(ctx, expr);
-
-            ctx.instructions.push(Instruction::new(
-                Op::Ret(Some(value_reg)),
-                None,
-                vec![value_reg]
-            ));
+            ctx.set_terminator(Terminator::Return(Some(value_reg)));
         }
     }
 }
@@ -148,7 +192,7 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
     match expr {
         ast::Expr::IntLit { value } => {
             let dest = ctx.new_register();
-            ctx.instructions.push(Instruction::new(
+            ctx.emit(Instruction::new(
                 Op::LoadImm(*value), 
                 Some(dest), 
                 vec![]
@@ -167,7 +211,7 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
             }
             
             let dest = ctx.new_register();
-            ctx.instructions.push(Instruction::new(
+            ctx.emit(Instruction::new(
                 Op::Call(name.clone()),
                 Some(dest),
                 arg_regs

@@ -1,9 +1,11 @@
 .section .text
-.global test
-test:
+.global add
+add:
     addi sp, sp, -16
     sw ra, 12(sp)
-    li t0, 4
+    mv t0, a0
+    mv t1, a1
+    mv a0, t0
     lw ra, 12(sp)
     addi sp, sp, 16
     ret
@@ -13,17 +15,13 @@ test:
 main:
     addi sp, sp, -16
     sw ra, 12(sp)
-    li t0, 1
-.L0_if:
-    beqz t0, .L1_else
+    li t0, 5
     li t1, 10
-    j .L2_end
-.L1_else:
-    li t2, 20
-.L2_end:
-    call test
-    mv t3, a0
+    mv a0, t0
+    mv a1, t1
+    call add
+    mv t2, a0
+    mv a0, t2
     lw ra, 12(sp)
     addi sp, sp, 16
     ret
-
