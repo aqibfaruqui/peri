@@ -1,4 +1,5 @@
 pub mod lower;
+pub mod cfg;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct VirtualRegister {
