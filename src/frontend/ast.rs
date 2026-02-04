@@ -7,8 +7,29 @@ pub struct Program {
 #[derive(Debug, Clone)]
 pub struct Peripheral {
     pub name: String,
+    pub base_address: Option<u32>,
     pub states: Vec<String>,
     pub initial: String,
+    pub register_blocks: Vec<RegisterBlock>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegisterBlock {
+    pub reg_type: RegisterType,
+    pub registers: Vec<Register>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Register {
+    pub name: String,
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone)]
+pub enum RegisterType {
+    U8,
+    U16,
+    U32,
 }
 
 #[derive(Debug, Clone)]
@@ -29,6 +50,9 @@ pub struct TypeState {
 #[derive(Debug, Clone)]
 pub enum Type {
     I32,
+    U8,
+    U16,
+    U32,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +63,7 @@ pub enum Statement {
     If { cond: Expr, then_block: Vec<Statement>, else_block: Vec<Statement>},
     While { cond: Expr, body: Vec<Statement>},
     Return { expr: Expr },
+    PeripheralWrite { peripheral: String, register: String, value: Expr },
 }
 
 #[derive(Debug, Clone)]
@@ -46,4 +71,5 @@ pub enum Expr {
     IntLit {value: i32},            // TODO: Test if better as IntLit(i32) and Variable(String)
     FnCall { name: String, args: Vec<Expr> },
     Variable { name: String },
+    PeripheralRead { peripheral: String, register: String },        // TODO: Check if read and write should be in same enum
 }

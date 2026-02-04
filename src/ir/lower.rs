@@ -185,6 +185,11 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             let value_reg = lower_expression(ctx, expr);
             ctx.set_terminator(Terminator::Return(Some(value_reg)));
         }
+
+        ast::Statement::PeripheralWrite { peripheral, register, value } => {
+            // TODO: Implement MMIO write, for now just lower the value expression
+            lower_expression(ctx, value);
+        }
     }
 }
 
@@ -215,6 +220,17 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
                 Op::Call(name.clone()),
                 Some(dest),
                 arg_regs
+            ));
+            dest
+        }
+
+        ast::Expr::PeripheralRead { peripheral, register } => {
+            // TODO: Implement MMIO read, for now return a dummy register
+            let dest = ctx.new_register();
+            ctx.emit(Instruction::new(
+                Op::LoadImm(0),
+                Some(dest),
+                vec![]
             ));
             dest
         }

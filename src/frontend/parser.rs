@@ -20,6 +20,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         .padded();
         
     let comma = just(',').padded();
+    let semicolon = just(';').padded();
 
     /* 
      * Expression Parser 
@@ -108,10 +109,59 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
 
     /*
      * Peripheral Declaration Parser
-     * peripheral Timer { states: Off, On; initial: Off }
+     * peripheral Timer at 0x4000_0000 {
+     *     states: Off, On;
+     *     initial: Off;
+     *     registers u32 {
+     *         CTRL at 0x00;
+     *         COUNT at 0x04;
+     *     }
+     * }
      */
+    
+    // Parse hex number with optional underscores: 0x4000_0000
+    let hex_digit_or_underscore = one_of("0123456789abcdefABCDEF_");
+    let hex_num = just("0x")
+        .ignore_then(
+            hex_digit_or_underscore
+                .repeated()
+                .at_least(1)
+                .to_slice()
+                .map(|s: &str| {
+                    let cleaned = s.replace('_', "");
+                    u32::from_str_radix(&cleaned, 16).unwrap()
+                })
+        )
+        .padded();
+    
+    let reg_type = text::keyword("u8").to(ast::RegisterType::U8)
+        .or(text::keyword("u16").to(ast::RegisterType::U16))
+        .or(text::keyword("u32").to(ast::RegisterType::U32))
+        .padded();
+    
+    let register = ident.clone()
+        .then_ignore(text::keyword("at").padded())
+        .then(hex_num.clone())
+        .then_ignore(semicolon.clone())
+        .map(|(name, offset)| ast::Register { name, offset });
+    
+    let register_block = text::keyword("registers").padded()
+        .ignore_then(reg_type)
+        .then(
+            register
+                .repeated()
+                .collect()
+                .delimited_by(just('{').padded(), just('}').padded())
+        )
+        .map(|(reg_type, registers)| ast::RegisterBlock { reg_type, registers });
+    
     let peripheral = text::keyword("peripheral").padded()
         .ignore_then(ident.clone())
+        .then(
+            text::keyword("at").padded()
+                .ignore_then(hex_num.clone())
+                .or_not()
+        )
         .then_ignore(just('{').padded())
         .then_ignore(text::keyword("states").padded())
         .then_ignore(just(':').padded())
@@ -121,15 +171,23 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
                 .at_least(1)
                 .collect::<Vec<String>>()
         )
-        .then_ignore(just(';').padded())
+        .then_ignore(semicolon)
         .then_ignore(text::keyword("initial").padded())
         .then_ignore(just(':').padded())
         .then(ident.clone())
+        .then_ignore(semicolon)
+        .then(
+            register_block
+                .repeated()
+                .collect()
+        )
         .then_ignore(just('}').padded())
-        .map(|((name, states), initial)| ast::Peripheral {
+        .map(|((((name, base_address), states), initial), register_blocks)| ast::Peripheral {
             name,
+            base_address,
             states,
             initial,
+            register_blocks,
         });
 
     /*

@@ -1,6 +1,11 @@
-peripheral Timer {
+peripheral Timer at 0x4000_0000 {
     states: Disabled, Enabled;
-    initial: Disabled
+    initial: Disabled;
+    
+    registers u32 {
+        CTRL at 0x00;
+        COUNT at 0x04;
+    }
 }
 
 fn enable_timer() :: Timer<Disabled> -> Timer<Enabled> {
