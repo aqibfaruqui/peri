@@ -1,10 +1,9 @@
 .section .text
-.global add
-add:
+.global enable_timer
+enable_timer:
     addi sp, sp, -16
     sw ra, 12(sp)
-    mv t0, a0
-    mv t1, a1
+    li t0, 1
     mv a0, t0
     lw ra, 12(sp)
     addi sp, sp, 16
@@ -15,13 +14,9 @@ add:
 main:
     addi sp, sp, -16
     sw ra, 12(sp)
-    li t0, 5
-    li t1, 10
-    mv a0, t0
-    mv a1, t1
-    call add
-    mv t2, a0
-    mv a0, t2
+    call enable_timer
+    mv t0, a0
     lw ra, 12(sp)
     addi sp, sp, 16
     ret
+

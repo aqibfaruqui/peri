@@ -107,8 +107,34 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
     });
 
     /*
-     * Typestate Signature Parser
-     * :: Type<InputState> -> Type<OutputState>
+     * Peripheral Declaration Parser
+     * peripheral Timer { states: Off, On; initial: Off }
+     */
+    let peripheral = text::keyword("peripheral").padded()
+        .ignore_then(ident.clone())
+        .then_ignore(just('{').padded())
+        .then_ignore(text::keyword("states").padded())
+        .then_ignore(just(':').padded())
+        .then(
+            ident.clone()
+                .separated_by(comma.clone())
+                .at_least(1)
+                .collect::<Vec<String>>()
+        )
+        .then_ignore(just(';').padded())
+        .then_ignore(text::keyword("initial").padded())
+        .then_ignore(just(':').padded())
+        .then(ident.clone())
+        .then_ignore(just('}').padded())
+        .map(|((name, states), initial)| ast::Peripheral {
+            name,
+            states,
+            initial,
+        });
+
+    /*
+     * Typestate Signature Parser (optional)
+     * :: Peripheral<InputState> -> Peripheral<OutputState>
      */
     let type_state = ident
         .then(ident.delimited_by(just('<'), just('>')));
@@ -146,7 +172,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
                 .collect()
                 .delimited_by(just('(').padded(), just(')').padded()),
         )
-        .then(signature)
+        .then(signature.or_not())
         .then(
             statement
                 .repeated()
@@ -160,11 +186,17 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             body,
         });
 
-    /* Program Parser */
-    function
+    /* Program Parser: peripherals first, then functions */
+    peripheral
         .padded()
         .repeated()
         .collect()
-        .map(|functions| ast::Program { functions })
+        .then(
+            function
+                .padded()
+                .repeated()
+                .collect()
+        )
+        .map(|(peripherals, functions)| ast::Program { peripherals, functions })
         .then_ignore(end())
 }

@@ -1,18 +1,24 @@
 #[derive(Debug, Clone)]
 pub struct Program {
+    pub peripherals: Vec<Peripheral>,
     pub functions: Vec<Function>,
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct Peripheral {
+    pub name: String,
+    pub states: Vec<String>,
+    pub initial: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
     pub args: Vec<(String, Type)>,
-    pub signature: TypeState,
+    pub signature: Option<TypeState>,
     pub body: Vec<Statement>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TypeState {
     pub peripheral: String,

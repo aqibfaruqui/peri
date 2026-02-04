@@ -1,8 +1,13 @@
-fn add(x: i32, y: i32) :: Timer<Enabled> -> Timer<Enabled> {
+peripheral Timer {
+    states: Disabled, Enabled;
+    initial: Disabled
+}
+
+fn enable_timer() :: Timer<Disabled> -> Timer<Enabled> {
+    let x = 1;
     return x;
 }
 
-fn main() :: Timer<Disabled> -> Timer<Enabled> {
-    let result = add(5, 10);
-    return result;
+fn main() {
+    enable_timer();
 }
