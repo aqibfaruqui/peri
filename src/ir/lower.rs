@@ -1,6 +1,6 @@
 use crate::frontend::ast;
 use crate::ir::{VirtualRegister, Instruction, Op};
-use crate::ir::cfg::{CFG, BlockId, Terminator};
+use crate::ir::cfg::{CFG, BlockId, Terminator, Statement, Expr};
 use std::collections::HashMap;
 
 struct Context<'a> {
@@ -39,8 +39,12 @@ impl<'a> Context<'a> {
         self.current_block = block;
     }
 
-    fn emit(&mut self, instr: Instruction) {
+    fn emit_instr(&mut self, instr: Instruction) {
         self.cfg.block_mut(self.current_block).instructions.push(instr);
+    }
+
+    fn emit_stmt(&mut self, stmt: Statement) {
+        self.cfg.block_mut(self.current_block).statements.push(stmt);
     }
 
     fn set_terminator(&mut self, term: Terminator) {
@@ -90,7 +94,7 @@ fn lower_function(func: &ast::Function, peripherals: &[ast::Peripheral]) -> CFG 
     for (i, (name, _type)) in func.args.iter().enumerate() {
         let reg = ctx.new_register();
         ctx.vars.insert(name.clone(), reg);
-        ctx.emit(Instruction::new(
+        ctx.emit_instr(Instruction::new(
             Op::MovArg(i), 
             Some(reg),
             vec![]
@@ -111,15 +115,25 @@ fn lower_function(func: &ast::Function, peripherals: &[ast::Peripheral]) -> CFG 
 fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
     match stmt {
         ast::Statement::Let { var_name, value } => {
+            ctx.emit_stmt(Statement::Let {
+                var_name: var_name.clone(),
+                value: ast_expr_to_cfg(value),
+            });
+            
             let result_reg = lower_expression(ctx, value);
             ctx.vars.insert(var_name.clone(), result_reg);
         }
 
         ast::Statement::Assign { var_name, value } => {
+            ctx.emit_stmt(Statement::Assign {
+                var_name: var_name.clone(),
+                value: ast_expr_to_cfg(value),
+            });
+            
             let value_reg = lower_expression(ctx, value);
             let target_reg = ctx.get_register(var_name);
             
-            ctx.emit(Instruction::new(
+            ctx.emit_instr(Instruction::new(
                 Op::Mov,
                 Some(target_reg),
                 vec![value_reg]
@@ -127,6 +141,10 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
         }
 
         ast::Statement::Expr { expr } => {
+            ctx.emit_stmt(Statement::Expr {
+                expr: ast_expr_to_cfg(expr),
+            });
+            
             lower_expression(ctx, expr);
         }
 
@@ -205,19 +223,25 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
         }
 
         ast::Statement::PeripheralWrite { peripheral, register, value } => {
+            ctx.emit_stmt(Statement::PeripheralWrite {
+                peripheral: peripheral.clone(),
+                register: register.clone(),
+                value: ast_expr_to_cfg(value),
+            });
+            
             let value_reg = lower_expression(ctx, value);
             
             let addr = ctx.get_mmio_address(peripheral, register)
                 .expect(&format!("Unknown peripheral register {}.{}", peripheral, register));
             
             let addr_reg = ctx.new_register();
-            ctx.emit(Instruction::new(
+            ctx.emit_instr(Instruction::new(
                 Op::LoadAddr(addr),
                 Some(addr_reg),
                 vec![]
             ));
             
-            ctx.emit(Instruction::new(
+            ctx.emit_instr(Instruction::new(
                 Op::StoreWord,
                 None,
                 vec![value_reg, addr_reg]
@@ -230,7 +254,7 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
     match expr {
         ast::Expr::IntLit { value } => {
             let dest = ctx.new_register();
-            ctx.emit(Instruction::new(
+            ctx.emit_instr(Instruction::new(
                 Op::LoadImm(*value), 
                 Some(dest), 
                 vec![]
@@ -249,7 +273,7 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
             }
             
             let dest = ctx.new_register();
-            ctx.emit(Instruction::new(
+            ctx.emit_instr(Instruction::new(
                 Op::Call(name.clone()),
                 Some(dest),
                 arg_regs
@@ -262,19 +286,35 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
                 .expect(&format!("Unknown peripheral register {}.{}", peripheral, register));
             
             let addr_reg = ctx.new_register();
-            ctx.emit(Instruction::new(
+            ctx.emit_instr(Instruction::new(
                 Op::LoadAddr(addr),
                 Some(addr_reg),
                 vec![]
             ));
             
             let dest = ctx.new_register();
-            ctx.emit(Instruction::new(
+            ctx.emit_instr(Instruction::new(
                 Op::LoadWord,
                 Some(dest),
                 vec![addr_reg]
             ));
             dest
         }
+    }
+}
+
+// Convert AST expression to CFG expression
+fn ast_expr_to_cfg(expr: &ast::Expr) -> Expr {
+    match expr {
+        ast::Expr::IntLit { value } => Expr::IntLit { value: *value },              // TODO: Check * instead of .clone()
+        ast::Expr::Variable { name } => Expr::Variable { name: name.clone() },
+        ast::Expr::PeripheralRead { peripheral, register } => Expr::PeripheralRead {
+            peripheral: peripheral.clone(),
+            register: register.clone(),
+        },
+        ast::Expr::FnCall { name, args } => Expr::FnCall {
+            name: name.clone(),
+            args: args.iter().map(ast_expr_to_cfg).collect(),
+        },
     }
 }

@@ -108,7 +108,8 @@ impl CFG {
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BlockId,
-    pub instructions: Vec<Instruction>,
+    pub statements: Vec<Statement>,         // For verification
+    pub instructions: Vec<Instruction>,     // For codegen
     pub terminator: Terminator,
 }
 
@@ -116,18 +117,69 @@ impl BasicBlock {
     pub fn new(id: BlockId) -> Self {
         Self {
             id,
+            statements: Vec::new(),
             instructions: Vec::new(),
             terminator: Terminator::None,
         }
     }
 
-    pub fn push(&mut self, instr: Instruction) {
+    pub fn push_instr(&mut self, instr: Instruction) {
         self.instructions.push(instr);
+    }
+
+    pub fn push_stmt(&mut self, stmt: Statement) {
+        self.statements.push(stmt);
     }
 
     pub fn set_terminator(&mut self, term: Terminator) {
         self.terminator = term;
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum Statement {
+    PeripheralDriverCall {
+        func_name: String,
+        peripheral: String,
+        from_state: String,
+        to_state: String,
+    },
+    
+    Let {
+        var_name: String,
+        value: Expr,
+    },
+    
+    Assign {
+        var_name: String,
+        value: Expr,
+    },
+    
+    PeripheralWrite {
+        peripheral: String,
+        register: String,
+        value: Expr,
+    },
+    
+    Expr {
+        expr: Expr,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum Expr {
+    IntLit { value: i32 },
+    Variable { name: String },
+    
+    PeripheralRead {
+        peripheral: String,
+        register: String,
+    },
+    
+    FnCall {
+        name: String,
+        args: Vec<Expr>,
+    },
 }
 
 #[derive(Debug, Clone)]
