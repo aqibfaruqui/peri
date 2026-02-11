@@ -6,19 +6,21 @@ use std::collections::HashMap;
 struct Context<'a> {
     vars: HashMap<String, VirtualRegister>,
     peripherals: &'a [ast::Peripheral],
+    signatures: HashMap<String, &'a ast::TypeState>,
     cfg: CFG,
     current_block: BlockId,
     next_register: usize,
 }
 
 impl<'a> Context<'a> {
-    fn new(peripherals: &'a [ast::Peripheral]) -> Self {
+    fn new(peripherals: &'a [ast::Peripheral], signatures: HashMap<String, &'a ast::TypeState>) -> Self {
         let mut cfg = CFG::new();
         let entry = cfg.add_block();
         
         Self {
             vars: HashMap::new(),
             peripherals,
+            signatures,
             cfg,
             current_block: entry,
             next_register: 0,
@@ -80,16 +82,23 @@ impl<'a> Context<'a> {
 }
 
 pub fn lower(prog: &ast::Program) -> Vec<(String, CFG)> {
+    let mut signatures = HashMap::new();
+    for func in &prog.functions {
+        if let Some(sig) = &func.signature {
+            signatures.insert(func.name.clone(), sig);
+        }
+    }
+    
     let mut lowered_functions = Vec::new();
     for func in &prog.functions {
-        let cfg = lower_function(func, &prog.peripherals);
+        let cfg = lower_function(func, &prog.peripherals, &signatures);
         lowered_functions.push((func.name.clone(), cfg));
     }
     lowered_functions
 }
 
-fn lower_function(func: &ast::Function, peripherals: &[ast::Peripheral]) -> CFG {
-    let mut ctx = Context::new(peripherals);
+fn lower_function(func: &ast::Function, peripherals: &[ast::Peripheral], signatures: &HashMap<String, &ast::TypeState>) -> CFG {
+    let mut ctx = Context::new(peripherals, signatures.clone());
 
     for (i, (name, _type)) in func.args.iter().enumerate() {
         let reg = ctx.new_register();
@@ -141,9 +150,24 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
         }
 
         ast::Statement::Expr { expr } => {
-            ctx.emit_stmt(Statement::Expr {
-                expr: ast_expr_to_cfg(expr),
-            });
+            if let ast::Expr::FnCall { name, args } = expr {
+                if let Some(sig) = ctx.signatures.get(name) {
+                    ctx.emit_stmt(Statement::PeripheralDriverCall {
+                        func_name: name.clone(),
+                        peripheral: sig.peripheral.clone(),
+                        from_state: sig.input_state.clone(),
+                        to_state: sig.output_state.clone(),
+                    });
+                } else {
+                    ctx.emit_stmt(Statement::Expr {
+                        expr: ast_expr_to_cfg(expr),
+                    });
+                }
+            } else {
+                ctx.emit_stmt(Statement::Expr {
+                    expr: ast_expr_to_cfg(expr),
+                });
+            }
             
             lower_expression(ctx, expr);
         }
