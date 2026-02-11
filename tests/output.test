@@ -4,6 +4,10 @@ enable_timer:
     addi sp, sp, -16
     sw ra, 12(sp)
     li t0, 1
+    li t1, 0x40000000
+    sw t0, 0(t1)
+    li t1, 0x40000004
+    lw t0, 0(t1)
     mv a0, t0
     lw ra, 12(sp)
     addi sp, sp, 16

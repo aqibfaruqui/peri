@@ -3,20 +3,22 @@ use crate::ir::{VirtualRegister, Instruction, Op};
 use crate::ir::cfg::{CFG, BlockId, Terminator};
 use std::collections::HashMap;
 
-struct Context {
+struct Context<'a> {
     vars: HashMap<String, VirtualRegister>,
+    peripherals: &'a [ast::Peripheral],
     cfg: CFG,
     current_block: BlockId,
     next_register: usize,
 }
 
-impl Context {
-    fn new() -> Self {
+impl<'a> Context<'a> {
+    fn new(peripherals: &'a [ast::Peripheral]) -> Self {
         let mut cfg = CFG::new();
         let entry = cfg.add_block();
         
         Self {
             vars: HashMap::new(),
+            peripherals,
             cfg,
             current_block: entry,
             next_register: 0,
@@ -29,20 +31,20 @@ impl Context {
         r
     }
 
-    fn new_block(&mut self) -> BlockId {
+    fn add_block(&mut self) -> BlockId {
         self.cfg.add_block()
     }
 
-    fn switch_to_block(&mut self, block: BlockId) {
+    fn switch_to(&mut self, block: BlockId) {
         self.current_block = block;
     }
 
     fn emit(&mut self, instr: Instruction) {
-        self.cfg.block_mut(self.current_block).push(instr);
+        self.cfg.block_mut(self.current_block).instructions.push(instr);
     }
 
-    fn set_terminator(&mut self, t: Terminator) {
-        self.cfg.block_mut(self.current_block).set_terminator(t);
+    fn set_terminator(&mut self, term: Terminator) {
+        self.cfg.block_mut(self.current_block).terminator = term;
     }
 
     fn get_register(&self, name: &str) -> VirtualRegister {
@@ -55,19 +57,35 @@ impl Context {
         // Ok(var)
         *self.vars.get(name).expect(&format!("Variable {} not found", name))
     }
+
+    fn get_mmio_address(&self, peripheral_name: &str, register_name: &str) -> Option<u32> {
+        for p in self.peripherals {
+            if p.name == peripheral_name {
+                let base = p.base_address?;
+                for block in &p.register_blocks {
+                    for reg in &block.registers {
+                        if reg.name == register_name {
+                            return Some(base + reg.offset);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 pub fn lower(prog: &ast::Program) -> Vec<(String, CFG)> {
     let mut lowered_functions = Vec::new();
     for func in &prog.functions {
-        let cfg = lower_function(func);
+        let cfg = lower_function(func, &prog.peripherals);
         lowered_functions.push((func.name.clone(), cfg));
     }
     lowered_functions
 }
 
-fn lower_function(func: &ast::Function) -> CFG {
-    let mut ctx = Context::new();
+fn lower_function(func: &ast::Function, peripherals: &[ast::Peripheral]) -> CFG {
+    let mut ctx = Context::new(peripherals);
 
     for (i, (name, _type)) in func.args.iter().enumerate() {
         let reg = ctx.new_register();
@@ -115,9 +133,9 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
         ast::Statement::If { cond, then_block, else_block } => {
             let cond_reg = lower_expression(ctx, cond);
             
-            let then_bb = ctx.new_block();
-            let else_bb = ctx.new_block();
-            let merge_bb = ctx.new_block();
+            let then_bb = ctx.add_block();
+            let else_bb = ctx.add_block();
+            let merge_bb = ctx.add_block();
             
             // Current block branches based on condition
             ctx.set_terminator(Terminator::Branch {
@@ -127,7 +145,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             });
             
             // Emit then block
-            ctx.switch_to_block(then_bb);
+            ctx.switch_to(then_bb);
             for s in then_block {
                 lower_statement(ctx, s);
             }
@@ -137,7 +155,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             }
             
             // Emit else block
-            ctx.switch_to_block(else_bb);
+            ctx.switch_to(else_bb);
             for s in else_block {
                 lower_statement(ctx, s);
             }
@@ -147,19 +165,19 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             }
             
             // Continue in merge block
-            ctx.switch_to_block(merge_bb);
+            ctx.switch_to(merge_bb);
         }
 
         ast::Statement::While { cond, body } => {
-            let header_bb = ctx.new_block();
-            let body_bb = ctx.new_block();
-            let exit_bb = ctx.new_block();
+            let header_bb = ctx.add_block();
+            let body_bb = ctx.add_block();
+            let exit_bb = ctx.add_block();
             
             // Current block jumps to loop header
             ctx.set_terminator(Terminator::Jump(header_bb));
             
             // Header evaluates condition and branches
-            ctx.switch_to_block(header_bb);
+            ctx.switch_to(header_bb);
             let cond_reg = lower_expression(ctx, cond);
             ctx.set_terminator(Terminator::Branch {
                 cond: cond_reg,
@@ -168,7 +186,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             });
             
             // Body executes and loops back to header
-            ctx.switch_to_block(body_bb);
+            ctx.switch_to(body_bb);
             for s in body {
                 lower_statement(ctx, s);
             }
@@ -178,7 +196,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             }
             
             // Continue in exit block
-            ctx.switch_to_block(exit_bb);
+            ctx.switch_to(exit_bb);
         }
 
         ast::Statement::Return { expr } => {
@@ -187,8 +205,23 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
         }
 
         ast::Statement::PeripheralWrite { peripheral, register, value } => {
-            // TODO: Implement MMIO write, for now just lower the value expression
-            lower_expression(ctx, value);
+            let value_reg = lower_expression(ctx, value);
+            
+            let addr = ctx.get_mmio_address(peripheral, register)
+                .expect(&format!("Unknown peripheral register {}.{}", peripheral, register));
+            
+            let addr_reg = ctx.new_register();
+            ctx.emit(Instruction::new(
+                Op::LoadAddr(addr),
+                Some(addr_reg),
+                vec![]
+            ));
+            
+            ctx.emit(Instruction::new(
+                Op::StoreWord,
+                None,
+                vec![value_reg, addr_reg]
+            ));
         }
     }
 }
@@ -225,12 +258,21 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
         }
 
         ast::Expr::PeripheralRead { peripheral, register } => {
-            // TODO: Implement MMIO read, for now return a dummy register
+            let addr = ctx.get_mmio_address(peripheral, register)
+                .expect(&format!("Unknown peripheral register {}.{}", peripheral, register));
+            
+            let addr_reg = ctx.new_register();
+            ctx.emit(Instruction::new(
+                Op::LoadAddr(addr),
+                Some(addr_reg),
+                vec![]
+            ));
+            
             let dest = ctx.new_register();
             ctx.emit(Instruction::new(
-                Op::LoadImm(0),
+                Op::LoadWord,
                 Some(dest),
-                vec![]
+                vec![addr_reg]
             ));
             dest
         }

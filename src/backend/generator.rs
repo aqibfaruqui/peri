@@ -29,6 +29,23 @@ pub fn generate(
                 writeln!(output, "    li {}, {}", rd, val)?;
             }
 
+            Op::LoadAddr(addr) => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                writeln!(output, "    li {}, 0x{:08x}", rd, addr)?;
+            }
+
+            Op::LoadWord => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let addr_reg = allocation.get(&instr.args[0]).unwrap();
+                writeln!(output, "    lw {}, 0({})", rd, addr_reg)?;
+            }
+
+            Op::StoreWord => {
+                let val_reg = allocation.get(&instr.args[0]).unwrap();
+                let addr_reg = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    sw {}, 0({})", val_reg, addr_reg)?;
+            }
+
             Op::Mov => {
                 let rd = allocation.get(&instr.destination.unwrap()).unwrap();
                 let rs = allocation.get(&instr.args[0]).unwrap();

@@ -17,6 +17,9 @@ pub struct Instruction {
 #[derive(Debug, Clone)]
 pub enum Op {
     LoadImm(i32),                   // li t0, 5
+    LoadAddr(u32),                  // li t0, 0x40000000
+    LoadWord,                       // lw t1, 0(t0)
+    StoreWord,                      // sw t0, 0(t1)
     Mov,                            // mv t1, t0
     MovArg(usize),                  // mv a0, t1
     Call(String),                   // call func

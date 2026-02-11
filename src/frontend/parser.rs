@@ -21,10 +21,11 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         
     let comma = just(',').padded();
     let semicolon = just(';').padded();
+    let equals = just('=').padded();
 
     /* 
      * Expression Parser 
-     * An expression atom is an IntLit, FnCall or Variable
+     * An expression atom is an IntLit, FnCall, PeripheralRead, or Variable
      */
     let expr = recursive(|expr| {
 
@@ -41,10 +42,15 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             )
             .map(|(name, args)| ast::Expr::FnCall { name, args });
 
+        let peripheral_read = ident
+            .then_ignore(just('.'))
+            .then(ident)
+            .map(|(peripheral, register)| ast::Expr::PeripheralRead { peripheral, register });
+
         let var = ident
             .map(|name: String| ast::Expr::Variable { name });
 
-        val.or(fn_call).or(var)
+        val.or(fn_call).or(peripheral_read).or(var)
     });
 
     /*
@@ -60,13 +66,13 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
 
         let let_stmt = text::keyword("let").padded()
             .ignore_then(ident)
-            .then_ignore(just('=').padded())
+            .then_ignore(equals)
             .then(expr.clone())
             .then_ignore(just(';').padded())
             .map(|(var_name, value)| ast::Statement::Let { var_name, value });
 
         let assign_stmt = ident
-            .then_ignore(just('=').padded())
+            .then_ignore(equals)
             .then(expr.clone())
             .then_ignore(just(';').padded())
             .map(|(var_name, value)| ast::Statement::Assign { var_name, value });
@@ -99,9 +105,22 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             .then_ignore(just(';').padded())
             .map(|expr| ast::Statement::Return { expr });
 
+        let peripheral_write_stmt = ident
+            .then_ignore(just('.'))
+            .then(ident)
+            .then_ignore(equals)
+            .then(expr.clone())
+            .then_ignore(just(';').padded())
+            .map(|((peripheral, register), value)| ast::Statement::PeripheralWrite { 
+                peripheral, 
+                register, 
+                value 
+            });
+
         if_stmt
             .or(while_stmt)
             .or(let_stmt)
+            .or(peripheral_write_stmt)
             .or(assign_stmt)
             .or(return_stmt)
             .or(expr_stmt)

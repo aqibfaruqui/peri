@@ -9,8 +9,8 @@ peripheral Timer at 0x4000_0000 {
 }
 
 fn enable_timer() :: Timer<Disabled> -> Timer<Enabled> {
-    let x = 1;
-    return x;
+    Timer.CTRL = 1;
+    return Timer.COUNT;
 }
 
 fn main() {
