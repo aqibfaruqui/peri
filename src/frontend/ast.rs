@@ -68,8 +68,39 @@ pub enum Statement {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    IntLit {value: i32},            // TODO: Test if better as IntLit(i32) and Variable(String)
-    FnCall { name: String, args: Vec<Expr> },
+    IntLit { value: i32 },
     Variable { name: String },
-    PeripheralRead { peripheral: String, register: String },        // TODO: Check if read and write should be in same enum
+    Binary { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
+    Unary { op: UnaryOp, operand: Box<Expr> },
+    FnCall { name: String, args: Vec<Expr> },
+    PeripheralRead { peripheral: String, register: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryOp {
+    Add,    
+    Sub,    
+    Mul,    
+    Div,    
+    Mod,    
+    BitAnd, 
+    BitOr,  
+    BitXor, 
+    Shl,    
+    Shr,    
+    Eq,     
+    Ne,     
+    Lt,     
+    Le,     
+    Gt,     
+    Ge,     
+    And,    
+    Or,     
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Neg,    
+    Not,    
+    BitNot, 
 }

@@ -324,14 +324,76 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
             ));
             dest
         }
+        
+        ast::Expr::Binary { op, left, right } => {
+            let left_reg = lower_expression(ctx, left);
+            let right_reg = lower_expression(ctx, right);
+            
+            let ir_op = match op {
+                ast::BinaryOp::Add => Op::Add,
+                ast::BinaryOp::Sub => Op::Sub,
+                ast::BinaryOp::Mul => Op::Mul,
+                ast::BinaryOp::Div => Op::Div,
+                ast::BinaryOp::Mod => Op::Rem,
+                ast::BinaryOp::BitAnd => Op::And,
+                ast::BinaryOp::BitOr => Op::Or,
+                ast::BinaryOp::BitXor => Op::Xor,
+                ast::BinaryOp::Shl => Op::Sll,
+                ast::BinaryOp::Shr => Op::Srl,
+                ast::BinaryOp::Eq => Op::Eq,
+                ast::BinaryOp::Ne => Op::Ne,
+                ast::BinaryOp::Lt => Op::Lt,
+                ast::BinaryOp::Le => Op::Le,
+                ast::BinaryOp::Gt => Op::Gt,
+                ast::BinaryOp::Ge => Op::Ge,
+                // TODO: Implement && and || short circuiting
+                ast::BinaryOp::And => Op::And,
+                ast::BinaryOp::Or => Op::Or,
+            };
+            
+            let dest = ctx.new_register();
+            ctx.emit_instr(Instruction::new(
+                ir_op,
+                Some(dest),
+                vec![left_reg, right_reg]
+            ));
+            dest
+        }
+        
+        ast::Expr::Unary { op, operand } => {
+            let operand_reg = lower_expression(ctx, operand);
+            
+            let ir_op = match op {
+                ast::UnaryOp::Neg => Op::Neg,
+                ast::UnaryOp::Not => Op::Not,
+                ast::UnaryOp::BitNot => Op::Not,
+            };
+            
+            let dest = ctx.new_register();
+            ctx.emit_instr(Instruction::new(
+                ir_op,
+                Some(dest),
+                vec![operand_reg]
+            ));
+            dest
+        }
     }
 }
 
 // Convert AST expression to CFG expression
 fn ast_expr_to_cfg(expr: &ast::Expr) -> Expr {
     match expr {
-        ast::Expr::IntLit { value } => Expr::IntLit { value: *value },              // TODO: Check * instead of .clone()
+        ast::Expr::IntLit { value } => Expr::IntLit { value: *value },
         ast::Expr::Variable { name } => Expr::Variable { name: name.clone() },
+        ast::Expr::Binary { op, left, right } => Expr::Binary {
+            op: *op,
+            left: Box::new(ast_expr_to_cfg(left)),
+            right: Box::new(ast_expr_to_cfg(right)),
+        },
+        ast::Expr::Unary { op, operand } => Expr::Unary {
+            op: *op,
+            operand: Box::new(ast_expr_to_cfg(operand)),
+        },
         ast::Expr::PeripheralRead { peripheral, register } => Expr::PeripheralRead {
             peripheral: peripheral.clone(),
             register: register.clone(),

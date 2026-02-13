@@ -36,14 +36,14 @@ pub fn generate(
 
             Op::LoadWord => {
                 let rd = allocation.get(&instr.destination.unwrap()).unwrap();
-                let addr_reg = allocation.get(&instr.args[0]).unwrap();
-                writeln!(output, "    lw {}, 0({})", rd, addr_reg)?;
+                let rs = allocation.get(&instr.args[0]).unwrap();
+                writeln!(output, "    lw {}, 0({})", rd, rs)?;
             }
 
             Op::StoreWord => {
-                let val_reg = allocation.get(&instr.args[0]).unwrap();
-                let addr_reg = allocation.get(&instr.args[1]).unwrap();
-                writeln!(output, "    sw {}, 0({})", val_reg, addr_reg)?;
+                let rs = allocation.get(&instr.args[0]).unwrap();
+                let rd = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    sw {}, 0({})", rs, rd)?;
             }
 
             Op::Mov => {
@@ -95,6 +95,130 @@ pub fn generate(
             Op::BranchIfFalse(target) => {
                 let cond_reg = allocation.get(&instr.args[0]).unwrap();
                 writeln!(output, "    beqz {}, {}", cond_reg, target)?;
+            }
+            
+            Op::Add => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    add {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Sub => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    sub {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Mul => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    mul {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Div => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    div {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Rem => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    rem {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::And => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    and {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Or => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    or {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Xor => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    xor {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Sll => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    sll {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Srl => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    srl {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Neg => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs = allocation.get(&instr.args[0]).unwrap();
+                writeln!(output, "    neg {}, {}", rd, rs)?;  
+            }
+            
+            Op::Not => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs = allocation.get(&instr.args[0]).unwrap();
+                writeln!(output, "    not {}, {}", rd, rs)?;
+            }
+            
+            Op::Eq => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    seq {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Ne => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    sne {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Lt => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    slt {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Le => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    sle {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Gt => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    sgt {}, {}, {}", rd, rs1, rs2)?;
+            }
+            
+            Op::Ge => {
+                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
+                let rs1 = allocation.get(&instr.args[0]).unwrap();
+                let rs2 = allocation.get(&instr.args[1]).unwrap();
+                writeln!(output, "    sge {}, {}, {}", rd, rs1, rs2)?;
             }
         }
     }

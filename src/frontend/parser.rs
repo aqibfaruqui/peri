@@ -1,5 +1,6 @@
 use crate::frontend::ast;
 use chumsky::prelude::*;
+use chumsky::pratt::*;
 use chumsky::Parser;
 
 pub fn parse(source_code: &str) -> Result<ast::Program, Vec<chumsky::error::Simple<'_, char>>> {
@@ -23,10 +24,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
     let semicolon = just(';').padded();
     let equals = just('=').padded();
 
-    /* 
-     * Expression Parser 
-     * An expression atom is an IntLit, FnCall, PeripheralRead, or Variable
-     */
+    /* Expression Parser */
     let expr = recursive(|expr| {
 
         let val = int_lit
@@ -50,13 +48,94 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         let var = ident
             .map(|name: String| ast::Expr::Variable { name });
 
-        val.or(fn_call).or(peripheral_read).or(var)
+        let atom = val
+            .or(fn_call)
+            .or(peripheral_read)
+            .or(var)
+            .or(expr.clone().delimited_by(just('(').padded(), just(')').padded()))
+            .padded();
+
+        atom.pratt((
+            prefix(11, just('-').padded(), |_, rhs, _| ast::Expr::Unary {
+                op: ast::UnaryOp::Neg,
+                operand: Box::new(rhs),
+            }),
+            prefix(11, just('!').padded(), |_, rhs, _| ast::Expr::Unary {
+                op: ast::UnaryOp::Not,
+                operand: Box::new(rhs),
+            }),
+            prefix(11, just('~').padded(), |_, rhs, _| ast::Expr::Unary {
+                op: ast::UnaryOp::BitNot,
+                operand: Box::new(rhs),
+            }),
+
+            infix(left(10), just('*').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Mul, left: Box::new(l), right: Box::new(r),
+            }),
+            infix(left(10), just('/').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Div, left: Box::new(l), right: Box::new(r),
+            }),
+            infix(left(10), just('%').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Mod, left: Box::new(l), right: Box::new(r),
+            }),
+
+            infix(left(9), just('+').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Add, left: Box::new(l), right: Box::new(r),
+            }),
+            infix(left(9), just('-').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Sub, left: Box::new(l), right: Box::new(r),
+            }),
+
+            infix(left(8), just("<<").padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Shl, left: Box::new(l), right: Box::new(r),
+            }),
+            infix(left(8), just(">>").padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Shr, left: Box::new(l), right: Box::new(r),
+            }),
+
+            infix(left(7), just("<=").padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Le, left: Box::new(l), right: Box::new(r),
+            }),
+            infix(left(7), just(">=").padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Ge, left: Box::new(l), right: Box::new(r),
+            }),
+            infix(left(7), just('<').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Lt, left: Box::new(l), right: Box::new(r),
+            }),
+            infix(left(7), just('>').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Gt, left: Box::new(l), right: Box::new(r),
+            }),
+
+            infix(left(6), just("==").padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Eq, left: Box::new(l), right: Box::new(r),
+            }),
+            infix(left(6), just("!=").padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Ne, left: Box::new(l), right: Box::new(r),
+            }),
+
+            infix(left(5), just('&').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::BitAnd, left: Box::new(l), right: Box::new(r),
+            }),
+
+            infix(left(4), just('^').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::BitXor, left: Box::new(l), right: Box::new(r),
+            }),
+
+            infix(left(3), just('|').padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::BitOr, left: Box::new(l), right: Box::new(r),
+            }),
+
+            infix(left(2), just("&&").padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::And, left: Box::new(l), right: Box::new(r),
+            }),
+
+            infix(left(1), just("||").padded(), |l, _, r, _| ast::Expr::Binary {
+                op: ast::BinaryOp::Or, left: Box::new(l), right: Box::new(r),
+            }),
+        ))
     });
 
-    /*
-     * Statement Parser 
-     * A statement atom is a Let, Assign, Expr, If or While
-     */
+    /* Statement Parser  */
     let statement = recursive(|statement| {
 
         let block = statement.clone()

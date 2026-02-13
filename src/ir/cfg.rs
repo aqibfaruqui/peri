@@ -171,6 +171,17 @@ pub enum Expr {
     IntLit { value: i32 },
     Variable { name: String },
     
+    Binary {
+        op: crate::frontend::ast::BinaryOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    
+    Unary {
+        op: crate::frontend::ast::UnaryOp,
+        operand: Box<Expr>,
+    },
+    
     PeripheralRead {
         peripheral: String,
         register: String,
