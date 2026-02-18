@@ -87,7 +87,6 @@ fn get_successors(term: &Terminator) -> Vec<BlockId> {
     match term {
         Terminator::Jump(target) => vec![*target],
         Terminator::Branch { then_block, else_block, .. } => vec![*then_block, *else_block],
-        Terminator::Fallthrough(target) => vec![*target],
         Terminator::Return(_) => vec![],
         Terminator::None => vec![],
     }

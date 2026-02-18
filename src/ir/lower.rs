@@ -150,7 +150,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
         }
 
         ast::Statement::Expr { expr } => {
-            if let ast::Expr::FnCall { name, args } = expr {
+            if let ast::Expr::FnCall { name, .. } = expr {
                 if let Some(sig) = ctx.signatures.get(name) {
                     ctx.emit_stmt(Statement::PeripheralDriverCall {
                         function: name.clone(),

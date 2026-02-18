@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::ir::VirtualRegister;
-use crate::ir::cfg::{CFG, BlockId};
+use crate::ir::cfg::{CFG};
 use crate::backend::liveness;
 
 pub type Allocation = HashMap<VirtualRegister, String>;

@@ -5,6 +5,7 @@ pub struct Program {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Peripheral {
     pub name: String,
     pub base_address: Option<u32>,
@@ -14,6 +15,7 @@ pub struct Peripheral {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RegisterBlock {
     pub reg_type: RegisterType,
     pub registers: Vec<Register>,
@@ -48,6 +50,7 @@ pub struct TypeState {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Type {
     I32,
     U8,

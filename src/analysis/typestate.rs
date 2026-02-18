@@ -246,7 +246,8 @@ fn verify_cfg(
     func_name: &str,
 ) -> Result<(), TypestateError> {
     let mut visited = HashSet::new();
-    verify_block_recursive(cfg, cfg.entry, state_env, signatures, &mut visited, func_name)
+    let mut state_snapshots: HashMap<usize, StateEnv> = HashMap::new();
+    verify_block_recursive(cfg, cfg.entry, state_env, signatures, &mut visited, func_name, &mut state_snapshots)
 }
 
 fn verify_block_recursive(
@@ -256,11 +257,13 @@ fn verify_block_recursive(
     signatures: &HashMap<String, ast::TypeState>,
     visited: &mut HashSet<usize>,
     func_name: &str,
+    state_snapshots: &mut HashMap<usize, StateEnv>,
 ) -> Result<(), TypestateError> {
     if visited.contains(&block_id) {
         return Ok(());
     }
     visited.insert(block_id);
+    state_snapshots.insert(block_id, state_env.clone());
     
     let block = cfg.block(block_id);
     
@@ -270,15 +273,32 @@ fn verify_block_recursive(
     
     match &block.terminator {
         Terminator::Jump(target) => {
-            verify_block_recursive(cfg, *target, state_env, signatures, visited, func_name)?;
+            if visited.contains(target) {
+                if let Some(entry_state) = state_snapshots.get(target) {
+                    for (peripheral, before) in entry_state {
+                        if let Some(after) = state_env.get(peripheral) {
+                            if before != after {
+                                return Err(TypestateError::LoopChangesState {
+                                    func_name: func_name.to_string(),
+                                    peripheral: peripheral.clone(),
+                                    before: before.clone(),
+                                    after: after.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            } else {
+                verify_block_recursive(cfg, *target, state_env, signatures, visited, func_name, state_snapshots)?;
+            }
         }
         
         Terminator::Branch { cond: _, then_block, else_block } => {
             let mut then_env = state_env.clone();
             let mut else_env = state_env.clone();
             
-            verify_block_recursive(cfg, *then_block, &mut then_env, signatures, &mut visited.clone(), func_name)?;
-            verify_block_recursive(cfg, *else_block, &mut else_env, signatures, &mut visited.clone(), func_name)?;
+            verify_block_recursive(cfg, *then_block, &mut then_env, signatures, &mut visited.clone(), func_name, &mut state_snapshots.clone())?;
+            verify_block_recursive(cfg, *else_block, &mut else_env, signatures, &mut visited.clone(), func_name, &mut state_snapshots.clone())?;
             
             for (peripheral, then_state) in &then_env {
                 if let Some(else_state) = else_env.get(peripheral) {
@@ -294,10 +314,6 @@ fn verify_block_recursive(
             }
             
             *state_env = then_env;
-        }
-        
-        Terminator::Fallthrough(target) => {
-            verify_block_recursive(cfg, *target, state_env, signatures, visited, func_name)?;
         }
         
         Terminator::Return(_) | Terminator::None => {

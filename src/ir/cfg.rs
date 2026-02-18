@@ -85,16 +85,6 @@ impl CFG {
                     ));
                 }
 
-                Terminator::Fallthrough(target) => {
-                    if *target != block.id + 1 {
-                        instructions.push(Instruction::new(
-                            Op::Jump(format!(".LBB{}", target)),
-                            None,
-                            vec![],
-                        ));
-                    }
-                }
-
                 Terminator::None => {
                     // No terminator shouldn't happen in a well formed CFG :)
                 }
@@ -122,21 +112,10 @@ impl BasicBlock {
             terminator: Terminator::None,
         }
     }
-
-    pub fn push_instr(&mut self, instr: Instruction) {
-        self.instructions.push(instr);
-    }
-
-    pub fn push_stmt(&mut self, stmt: Statement) {
-        self.statements.push(stmt);
-    }
-
-    pub fn set_terminator(&mut self, term: Terminator) {
-        self.terminator = term;
-    }
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Statement {
     PeripheralDriverCall {
         function: String,
@@ -167,6 +146,7 @@ pub enum Statement {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Expr {
     IntLit { value: i32 },
     Variable { name: String },
@@ -202,6 +182,5 @@ pub enum Terminator {
         else_block: BlockId,
     },
     Return(Option<VirtualRegister>),    // Return from the function, optionally with a value
-    Fallthrough(BlockId),               // Fallthrough to the next block (implicit jump)
     None,
 }
