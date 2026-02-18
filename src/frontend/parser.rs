@@ -55,19 +55,17 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             .or(expr.clone().delimited_by(just('(').padded(), just(')').padded()))
             .padded();
 
-        atom.pratt((
-            prefix(11, just('-').padded(), |_, rhs, _| ast::Expr::Unary {
-                op: ast::UnaryOp::Neg,
-                operand: Box::new(rhs),
-            }),
-            prefix(11, just('!').padded(), |_, rhs, _| ast::Expr::Unary {
-                op: ast::UnaryOp::Not,
-                operand: Box::new(rhs),
-            }),
-            prefix(11, just('~').padded(), |_, rhs, _| ast::Expr::Unary {
-                op: ast::UnaryOp::BitNot,
-                operand: Box::new(rhs),
-            }),
+        let unary_op = just('-').to(ast::UnaryOp::Neg)
+            .or(just('!').to(ast::UnaryOp::Not))
+            .or(just('~').to(ast::UnaryOp::BitNot))
+            .padded();
+
+        let unary = unary_op.repeated().foldr(atom, |op, expr| ast::Expr::Unary {
+            op,
+            operand: Box::new(expr),
+        });
+
+        unary.pratt((
 
             infix(left(10), just('*').padded(), |l, _, r, _| ast::Expr::Binary {
                 op: ast::BinaryOp::Mul, left: Box::new(l), right: Box::new(r),
@@ -317,7 +315,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
 
     let argument = ident
         .then_ignore(just(':')).padded()
-        .then(type_label);
+        .then(type_label.clone());
 
     let function = text::keyword("fn").padded()
         .ignore_then(ident)
@@ -328,6 +326,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
                 .collect()
                 .delimited_by(just('(').padded(), just(')').padded()),
         )
+        .then_ignore(just("->").padded().then(type_label.clone()).or_not())
         .then(signature.or_not())
         .then(
             statement
