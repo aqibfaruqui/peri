@@ -3,7 +3,7 @@ use crate::backend::regalloc::Allocation;
 use std::fmt::Write;
 
 pub fn generate(
-    func_name: &str, 
+    function: &str, 
     instructions: &Vec<Instruction>, 
     allocation: &Allocation
 ) -> Result<String, std::fmt::Error> {
@@ -15,8 +15,8 @@ pub fn generate(
      * example_func:
      */
     writeln!(output, ".section .text")?;
-    writeln!(output, ".global {}", func_name)?;
-    writeln!(output, "{}:", func_name)?;
+    writeln!(output, ".global {}", function)?;
+    writeln!(output, "{}:", function)?;
 
     // TODO: Calculate necessary stack offset from function arguments
     writeln!(output, "    addi sp, sp, -16")?;

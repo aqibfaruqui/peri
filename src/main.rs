@@ -5,6 +5,7 @@ use std::env;
 use std::fs;
 
 mod frontend;
+mod analysis;
 mod ir;
 mod backend;
 
@@ -20,7 +21,12 @@ impl Config {
         args.next();
 
         let source = match args.next() {
-            Some(arg) => arg,
+            Some(arg) => {
+                if !arg.ends_with(".peri") {
+                    return Err("Source file must have a .peri extension");
+                }
+                arg
+            }
             None => return Err("Didn't get a source file path"),
         };
 
@@ -52,14 +58,22 @@ fn main() {
         process::exit(1);
     });
 
-    // TODO: Implement verification on AST
-    // if let Err(err) = ir::verifier::verify(&ast) {
-    //     println!("Error verifying program: {err}");
-    //     process::exit(1);
-    // }
+    if let Err(errors) = analysis::semantic::check(&ast) {
+        for err in &errors {
+            println!("Semantic error: {}", err);
+        }
+        process::exit(1);
+    }
 
-    let output = backend::compile(&ast).unwrap_or_else(|err| {
-        println!("Error during compilation backend: {}", err);
+    let ir = ir::lower::lower(&ast);
+
+    if let Err(err) = analysis::typestate::check(&ast, &ir) {
+        println!("Typestate error: {}", err);
+        process::exit(1);
+    }
+
+    let output = backend::generate(&ir).unwrap_or_else(|err| {
+        println!("Error during code generation: {}", err);
         process::exit(1);
     });
 

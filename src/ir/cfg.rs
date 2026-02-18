@@ -139,7 +139,7 @@ impl BasicBlock {
 #[derive(Debug, Clone)]
 pub enum Statement {
     PeripheralDriverCall {
-        func_name: String,
+        function: String,
         peripheral: String,
         from_state: String,
         to_state: String,
