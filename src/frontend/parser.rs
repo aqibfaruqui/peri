@@ -10,19 +10,25 @@ pub fn parse(source_code: &str) -> Result<ast::Program, Vec<chumsky::error::Simp
 }
 
 fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simple<'src, char>>> {
-    // All of our 'atoms' (like identifiers, keywords, symbols)
-    // are '.padded()' to ignore whitespace around them.
+    let comment = just("//")    // TODO: Add support for block comments /* ... */
+        .then(none_of('\n').repeated())
+        .ignored();
+
+    let ws = comment
+        .or(text::whitespace().at_least(1).ignored())
+        .repeated();
+
     let ident = text::ident()
-        .padded()
+        .padded_by(ws.clone())
         .map(|s: &str| s.to_string());
 
     let int_lit = text::int(10)
         .map(|s: &str| s.parse::<i32>().unwrap())
-        .padded();
-        
-    let comma = just(',').padded();
-    let semicolon = just(';').padded();
-    let equals = just('=').padded();
+        .padded_by(ws.clone());
+
+    let comma = just(',').padded_by(ws.clone());
+    let semicolon = just(';').padded_by(ws.clone());
+    let equals = just('=').padded_by(ws.clone());
 
     /* Expression Parser */
     let expr = recursive(|expr| {
@@ -52,13 +58,13 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             .or(fn_call)
             .or(peripheral_read)
             .or(var)
-            .or(expr.clone().delimited_by(just('(').padded(), just(')').padded()))
-            .padded();
+            .or(expr.clone().delimited_by(just('(').padded_by(ws.clone()), just(')').padded_by(ws.clone())))
+            .padded_by(ws.clone());
 
         let unary_op = just('-').to(ast::UnaryOp::Neg)
             .or(just('!').to(ast::UnaryOp::Not))
             .or(just('~').to(ast::UnaryOp::BitNot))
-            .padded();
+            .padded_by(ws.clone());
 
         let unary = unary_op.repeated().foldr(atom, |op, expr| ast::Expr::Unary {
             op,
@@ -139,30 +145,37 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         let block = statement.clone()
             .repeated()
             .collect()
-            .delimited_by(just('{').padded(), just('}').padded());
+            .delimited_by(just('{').padded_by(ws.clone()), just('}').padded_by(ws.clone()));
 
-        let let_stmt = text::keyword("let").padded()
+        let let_stmt = text::keyword("let").padded_by(ws.clone())
             .ignore_then(ident)
             .then_ignore(equals)
             .then(expr.clone())
-            .then_ignore(just(';').padded())
+            .then_ignore(just(';').padded_by(ws.clone()))
             .map(|(var_name, value)| ast::Statement::Let { var_name, value });
+
+        let const_stmt = text::keyword("const").padded_by(ws.clone())
+            .ignore_then(ident)
+            .then_ignore(equals)
+            .then(expr.clone())
+            .then_ignore(just(';').padded_by(ws.clone()))
+            .map(|(var_name, value)| ast::Statement::Const { var_name, value });
 
         let assign_stmt = ident
             .then_ignore(equals)
             .then(expr.clone())
-            .then_ignore(just(';').padded())
+            .then_ignore(just(';').padded_by(ws.clone()))
             .map(|(var_name, value)| ast::Statement::Assign { var_name, value });
 
         let expr_stmt = expr.clone()
-            .then_ignore(just(';').padded())
+            .then_ignore(just(';').padded_by(ws.clone()))
             .map(|expr| ast::Statement::Expr { expr });
 
-        let if_stmt = text::keyword("if").padded()
+        let if_stmt = text::keyword("if").padded_by(ws.clone())
             .ignore_then(expr.clone())
             .then(block.clone())
             .then(
-                text::keyword("else").padded()
+                text::keyword("else").padded_by(ws.clone())
                 .ignore_then(block.clone())
                 .or_not()
             )
@@ -172,14 +185,14 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
                 else_block: else_block.unwrap_or_default()
             });
 
-        let while_stmt = text::keyword("while").padded()
+        let while_stmt = text::keyword("while").padded_by(ws.clone())
             .ignore_then(expr.clone())
             .then(block.clone())
             .map(|(cond, body)| ast::Statement::While { cond, body });
 
-        let return_stmt = text::keyword("return").padded()
+        let return_stmt = text::keyword("return").padded_by(ws.clone())
             .ignore_then(expr.clone())
-            .then_ignore(just(';').padded())
+            .then_ignore(just(';').padded_by(ws.clone()))
             .map(|expr| ast::Statement::Return { expr });
 
         let peripheral_write_stmt = ident
@@ -187,7 +200,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             .then(ident)
             .then_ignore(equals)
             .then(expr.clone())
-            .then_ignore(just(';').padded())
+            .then_ignore(just(';').padded_by(ws.clone()))
             .map(|((peripheral, register), value)| ast::Statement::PeripheralWrite { 
                 peripheral, 
                 register, 
@@ -196,6 +209,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
 
         if_stmt
             .or(while_stmt)
+            .or(const_stmt)
             .or(let_stmt)
             .or(peripheral_write_stmt)
             .or(assign_stmt)
@@ -228,12 +242,12 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
                     u32::from_str_radix(&cleaned, 16).unwrap()
                 })
         )
-        .padded();
+        .padded_by(ws.clone());
     
     let reg_type = text::keyword("u8").to(ast::RegisterType::U8)
         .or(text::keyword("u16").to(ast::RegisterType::U16))
         .or(text::keyword("u32").to(ast::RegisterType::U32))
-        .padded();
+        .padded_by(ws.clone());
     
     let register = ident.clone()
         .then_ignore(text::keyword("at").padded())
@@ -311,28 +325,28 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
      */
     let type_label = text::keyword("i32")
         .to(ast::Type::I32)
-        .padded();
+        .padded_by(ws.clone());
 
     let argument = ident
         .then_ignore(just(':')).padded()
         .then(type_label.clone());
 
-    let function = text::keyword("fn").padded()
+    let function = text::keyword("fn").padded_by(ws.clone())
         .ignore_then(ident)
         .then(
             argument
                 .separated_by(comma)
                 .allow_trailing()
                 .collect()
-                .delimited_by(just('(').padded(), just(')').padded()),
+                .delimited_by(just('(').padded_by(ws.clone()), just(')').padded_by(ws.clone())),
         )
-        .then_ignore(just("->").padded().then(type_label.clone()).or_not())
+        .then_ignore(just("->").padded_by(ws.clone()).then(type_label.clone()).or_not())
         .then(signature.or_not())
         .then(
             statement
                 .repeated()
                 .collect()
-                .delimited_by(just('{').padded(), just('}').padded()),
+                .delimited_by(just('{').padded_by(ws.clone()), just('}').padded_by(ws.clone())),
         )
         .map(|(((name, args), signature), body)| ast::Function {
             name,
@@ -343,15 +357,16 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
 
     /* Program Parser: peripherals first, then functions */
     peripheral
-        .padded()
+        .padded_by(ws.clone())
         .repeated()
         .collect()
         .then(
             function
-                .padded()
+                .padded_by(ws.clone())
                 .repeated()
                 .collect()
         )
         .map(|(peripherals, functions)| ast::Program { peripherals, functions })
+        .padded_by(ws.clone())
         .then_ignore(end())
 }

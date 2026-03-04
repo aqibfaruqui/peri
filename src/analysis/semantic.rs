@@ -24,6 +24,11 @@ pub enum SemanticError {
     DuplicateFunction {
         func_name: String,
     },
+
+    AssignToConst {
+        func_name: String,
+        var_name: String,
+    },
 }
 
 impl fmt::Display for SemanticError {
@@ -43,6 +48,10 @@ impl fmt::Display for SemanticError {
 
             SemanticError::DuplicateFunction { func_name } => {
                 write!(f, "Duplicate function definition '{}'", func_name)
+            }
+
+            SemanticError::AssignToConst { func_name, var_name } => {
+                write!(f, "Cannot assign to const '{}' in function '{}'", var_name, func_name)
             }
         }
     }
@@ -80,12 +89,13 @@ fn check_function(
     errors: &mut Vec<SemanticError>,
 ) {
     let mut scope: HashSet<String> = HashSet::new();
+    let mut consts: HashSet<String> = HashSet::new();
     for (arg_name, _) in &func.args {
         scope.insert(arg_name.clone());
     }
 
     for stmt in &func.body {
-        check_statement(stmt, &func.name, func_signatures, &mut scope, errors);
+        check_statement(stmt, &func.name, func_signatures, &mut scope, &mut consts, errors);
     }
 }
 
@@ -94,6 +104,7 @@ fn check_statement(
     func_name: &str,
     func_signatures: &HashMap<String, usize>,
     scope: &mut HashSet<String>,
+    consts: &mut HashSet<String>,
     errors: &mut Vec<SemanticError>,
 ) {
     match stmt {
@@ -102,9 +113,20 @@ fn check_statement(
             scope.insert(var_name.clone());
         }
 
+        ast::Statement::Const { var_name, value } => {
+            check_expr(value, func_name, func_signatures, scope, errors);
+            scope.insert(var_name.clone());
+            consts.insert(var_name.clone());
+        }
+
         ast::Statement::Assign { var_name, value } => {
             if !scope.contains(var_name) {
                 errors.push(SemanticError::UndefinedVariable {
+                    func_name: func_name.to_string(),
+                    var_name: var_name.clone(),
+                });
+            } else if consts.contains(var_name) {
+                errors.push(SemanticError::AssignToConst {
                     func_name: func_name.to_string(),
                     var_name: var_name.clone(),
                 });
@@ -124,13 +146,15 @@ fn check_statement(
             check_expr(cond, func_name, func_signatures, scope, errors);
 
             let mut then_scope = scope.clone();
+            let mut then_consts = consts.clone();
             for s in then_block {
-                check_statement(s, func_name, func_signatures, &mut then_scope, errors);
+                check_statement(s, func_name, func_signatures, &mut then_scope, &mut then_consts, errors);
             }
 
             let mut else_scope = scope.clone();
+            let mut else_consts = consts.clone();
             for s in else_block {
-                check_statement(s, func_name, func_signatures, &mut else_scope, errors);
+                check_statement(s, func_name, func_signatures, &mut else_scope, &mut else_consts, errors);
             }
         }
 
@@ -138,8 +162,9 @@ fn check_statement(
             check_expr(cond, func_name, func_signatures, scope, errors);
 
             let mut body_scope = scope.clone();
+            let mut body_consts = consts.clone();
             for s in body {
-                check_statement(s, func_name, func_signatures, &mut body_scope, errors);
+                check_statement(s, func_name, func_signatures, &mut body_scope, &mut body_consts, errors);
             }
         }
 

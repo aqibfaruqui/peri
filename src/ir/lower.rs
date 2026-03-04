@@ -123,7 +123,8 @@ fn lower_function(func: &ast::Function, peripherals: &[ast::Peripheral], signatu
 
 fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
     match stmt {
-        ast::Statement::Let { var_name, value } => {
+        ast::Statement::Let { var_name, value } |
+        ast::Statement::Const { var_name, value } => {
             ctx.emit_stmt(Statement::Let {
                 var_name: var_name.clone(),
                 value: ast_expr_to_cfg(value),
