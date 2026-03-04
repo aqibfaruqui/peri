@@ -1,7 +1,11 @@
 [package]
-name = "compiler"
+name = "peri"
 version = "0.1.0"
 edition = "2021"
+
+[[bin]]
+name = "peric"
+path = "src/main.rs"
 
 [dependencies]
 chumsky = { version = "0.12", features = ["pratt"] }
