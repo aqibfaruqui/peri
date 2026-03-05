@@ -38,13 +38,14 @@ impl CFG {
      * - Emit all instructions in the block
      * - Convert the terminator to instruction(s)
      */
-    pub fn flatten(&self) -> Vec<Instruction> {
+    pub fn flatten(&self, func_name: &str) -> Vec<Instruction> {
         let mut instructions = Vec::new();
-        
+        let label = |id: usize| format!(".LBB_{}_{}", func_name, id);
+
         for block in &self.blocks {
             if block.id != self.entry {
                 instructions.push(Instruction::new(
-                    Op::Label(format!(".LBB{}", block.id)),
+                    Op::Label(label(block.id)),
                     None,
                     vec![],
                 ));
@@ -55,7 +56,7 @@ impl CFG {
             match &block.terminator {
                 Terminator::Jump(target) => {
                     instructions.push(Instruction::new(
-                        Op::Jump(format!(".LBB{}", target)),
+                        Op::Jump(label(*target)),
                         None,
                         vec![],
                     ));
@@ -63,14 +64,14 @@ impl CFG {
 
                 Terminator::Branch { cond, then_block, else_block } => {
                     instructions.push(Instruction::new(
-                        Op::BranchIfFalse(format!(".LBB{}", else_block)),
+                        Op::BranchIfFalse(label(*else_block)),
                         None,
                         vec![*cond],
                     ));
 
                     if *then_block != block.id + 1 {
                         instructions.push(Instruction::new(
-                            Op::Jump(format!(".LBB{}", then_block)),
+                            Op::Jump(label(*then_block)),
                             None,
                             vec![],
                         ));

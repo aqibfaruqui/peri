@@ -10,7 +10,7 @@ pub fn generate(functions: &[(String, ir::cfg::CFG)]) -> Result<String, String> 
     for (function, cfg) in functions {
         let allocation = regalloc::allocate(cfg);
         
-        let instructions = cfg.flatten();
+        let instructions = cfg.flatten(function);
         let asm = generator::generate(function, &instructions, &allocation)
             .map_err(|e| e.to_string())?;
 
