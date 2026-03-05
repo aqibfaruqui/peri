@@ -1,6 +1,7 @@
 #[derive(Debug, Clone)]
 pub struct Program {
     pub peripherals: Vec<Peripheral>,
+    pub constants: Vec<(String, Expr)>,
     pub functions: Vec<Function>,
 }
 

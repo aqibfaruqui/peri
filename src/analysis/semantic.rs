@@ -72,8 +72,13 @@ pub fn check(program: &ast::Program) -> Result<(), Vec<SemanticError>> {
         func_signatures.insert(func.name.clone(), func.args.len());
     }
 
+    let mut global_consts: HashSet<String> = HashSet::new();
+    for (name, _) in &program.constants {
+        global_consts.insert(name.clone());
+    }
+
     for func in &program.functions {
-        check_function(func, &func_signatures, &mut errors);
+        check_function(func, &func_signatures, &global_consts, &mut errors);
     }
 
     if errors.is_empty() {
@@ -86,10 +91,11 @@ pub fn check(program: &ast::Program) -> Result<(), Vec<SemanticError>> {
 fn check_function(
     func: &ast::Function,
     func_signatures: &HashMap<String, usize>,
+    global_consts: &HashSet<String>,
     errors: &mut Vec<SemanticError>,
 ) {
-    let mut scope: HashSet<String> = HashSet::new();
-    let mut consts: HashSet<String> = HashSet::new();
+    let mut scope: HashSet<String> = global_consts.clone();
+    let mut consts: HashSet<String> = global_consts.clone();
     for (arg_name, _) in &func.args {
         scope.insert(arg_name.clone());
     }

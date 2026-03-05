@@ -26,6 +26,25 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         .map(|s: &str| s.parse::<i32>().unwrap())
         .padded_by(ws.clone());
 
+    let hex_digits = one_of("0123456789abcdefABCDEF_")
+        .repeated()
+        .at_least(1)
+        .to_slice()
+        .map(|s: &str| s.replace('_', ""));
+
+    let hex_num = just("0x")
+        .ignore_then(hex_digits.clone().map(|s| u32::from_str_radix(&s, 16).unwrap()))
+        .padded_by(ws.clone());
+
+    let hex_lit = just("0x")
+        .ignore_then(hex_digits.map(|s| i32::from_str_radix(&s, 16).unwrap_or(0)))
+        .padded_by(ws.clone())
+        .map(|value| ast::Expr::IntLit { value });
+
+    let bool_lit = text::keyword("true").to(ast::Expr::IntLit { value: 1 })
+        .or(text::keyword("false").to(ast::Expr::IntLit { value: 0 }))
+        .padded_by(ws.clone());
+
     let comma = just(',').padded_by(ws.clone());
     let semicolon = just(';').padded_by(ws.clone());
     let equals = just('=').padded_by(ws.clone());
@@ -54,7 +73,9 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         let var = ident
             .map(|name: String| ast::Expr::Variable { name });
 
-        let atom = val
+        let atom = hex_lit.clone()
+            .or(bool_lit.clone())
+            .or(val)
             .or(fn_call)
             .or(peripheral_read)
             .or(var)
@@ -229,21 +250,6 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
      * }
      */
     
-    // Parse hex number with optional underscores: 0x4000_0000
-    let hex_digit_or_underscore = one_of("0123456789abcdefABCDEF_");
-    let hex_num = just("0x")
-        .ignore_then(
-            hex_digit_or_underscore
-                .repeated()
-                .at_least(1)
-                .to_slice()
-                .map(|s: &str| {
-                    let cleaned = s.replace('_', "");
-                    u32::from_str_radix(&cleaned, 16).unwrap()
-                })
-        )
-        .padded_by(ws.clone());
-    
     let reg_type = text::keyword("u8").to(ast::RegisterType::U8)
         .or(text::keyword("u16").to(ast::RegisterType::U16))
         .or(text::keyword("u32").to(ast::RegisterType::U32))
@@ -323,8 +329,10 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
      *      statements 
      *  }'
      */
-    let type_label = text::keyword("i32")
-        .to(ast::Type::I32)
+    let type_label = text::keyword("i32").to(ast::Type::I32)
+        .or(text::keyword("u8").to(ast::Type::U8))
+        .or(text::keyword("u16").to(ast::Type::U16))
+        .or(text::keyword("u32").to(ast::Type::U32))
         .padded_by(ws.clone());
 
     let argument = ident
@@ -355,18 +363,30 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             body,
         });
 
-    /* Program Parser: peripherals first, then functions */
+    let global_const = text::keyword("const").padded_by(ws.clone())
+        .ignore_then(ident.clone())
+        .then_ignore(equals.clone())
+        .then(expr.clone())
+        .then_ignore(just(';').padded_by(ws.clone()));
+
+    /* Program Parser: peripherals, global consts and functions */
     peripheral
         .padded_by(ws.clone())
         .repeated()
         .collect()
+        .then(
+            global_const
+                .padded_by(ws.clone())
+                .repeated()
+                .collect::<Vec<(String, ast::Expr)>>()
+        )
         .then(
             function
                 .padded_by(ws.clone())
                 .repeated()
                 .collect()
         )
-        .map(|(peripherals, functions)| ast::Program { peripherals, functions })
+        .map(|((peripherals, constants), functions)| ast::Program { peripherals, constants, functions })
         .padded_by(ws.clone())
         .then_ignore(end())
 }

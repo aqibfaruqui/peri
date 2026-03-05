@@ -88,17 +88,30 @@ pub fn lower(prog: &ast::Program) -> Vec<(String, CFG)> {
             signatures.insert(func.name.clone(), sig);
         }
     }
-    
+
     let mut lowered_functions = Vec::new();
     for func in &prog.functions {
-        let cfg = lower_function(func, &prog.peripherals, &signatures);
+        let cfg = lower_function(func, &prog.peripherals, &signatures, &prog.constants);
         lowered_functions.push((func.name.clone(), cfg));
     }
     lowered_functions
 }
 
-fn lower_function(func: &ast::Function, peripherals: &[ast::Peripheral], signatures: &HashMap<String, &ast::TypeState>) -> CFG {
+fn lower_function(
+    func: &ast::Function,
+    peripherals: &[ast::Peripheral],
+    signatures: &HashMap<String, &ast::TypeState>,
+    global_constants: &[(String, ast::Expr)],
+) -> CFG {
     let mut ctx = Context::new(peripherals, signatures.clone());
+    
+    for (name, expr) in global_constants {
+        if let ast::Expr::IntLit { value } = expr {
+            let reg = ctx.new_register();
+            ctx.vars.insert(name.clone(), reg);
+            ctx.emit_instr(Instruction::new(Op::LoadImm(*value), Some(reg), vec![]));
+        }
+    }
 
     for (i, (name, _type)) in func.args.iter().enumerate() {
         let reg = ctx.new_register();
