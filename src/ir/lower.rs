@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 struct Context<'a> {
     vars: HashMap<String, VirtualRegister>,
+    global_constants: HashMap<String, i32>,
     peripherals: &'a [ast::Peripheral],
     signatures: HashMap<String, &'a ast::TypeState>,
     cfg: CFG,
@@ -13,12 +14,17 @@ struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
-    fn new(peripherals: &'a [ast::Peripheral], signatures: HashMap<String, &'a ast::TypeState>) -> Self {
+    fn new(
+        peripherals: &'a [ast::Peripheral],
+        signatures: HashMap<String, &'a ast::TypeState>,
+        global_constants: HashMap<String, i32>,
+    ) -> Self {
         let mut cfg = CFG::new();
         let entry = cfg.add_block();
-        
+
         Self {
             vars: HashMap::new(),
+            global_constants,
             peripherals,
             signatures,
             cfg,
@@ -103,16 +109,15 @@ fn lower_function(
     signatures: &HashMap<String, &ast::TypeState>,
     global_constants: &[(String, ast::Expr)],
 ) -> CFG {
-    let mut ctx = Context::new(peripherals, signatures.clone());
-    
-    for (name, expr) in global_constants {
-        if let ast::Expr::IntLit { value } = expr {
-            let reg = ctx.new_register();
-            ctx.vars.insert(name.clone(), reg);
-            ctx.emit_instr(Instruction::new(Op::LoadImm(*value), Some(reg), vec![]));
-        }
-    }
+    let consts_map: HashMap<String, i32> = global_constants
+        .iter()
+        .filter_map(|(name, expr)| {
+            if let ast::Expr::IntLit { value } = expr { Some((name.clone(), *value)) } else { None }
+        })
+        .collect();
 
+    let mut ctx = Context::new(peripherals, signatures.clone(), consts_map);
+    
     for (i, (name, _type)) in func.args.iter().enumerate() {
         let reg = ctx.new_register();
         ctx.vars.insert(name.clone(), reg);
@@ -301,7 +306,17 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
         }
 
         ast::Expr::Variable { name } => {
-            ctx.get_register(name)
+            if let Some(&value) = ctx.global_constants.get(name) {
+                let dest = ctx.new_register();
+                ctx.emit_instr(Instruction::new(
+                    Op::LoadImm(value), 
+                    Some(dest), 
+                    vec![]
+                ));
+                dest
+            } else {
+                ctx.get_register(name)
+            }
         }
 
         ast::Expr::FnCall { name, args } => {
