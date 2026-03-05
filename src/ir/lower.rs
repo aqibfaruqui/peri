@@ -1,6 +1,6 @@
 use crate::frontend::ast;
 use crate::ir::{VirtualRegister, Instruction, Op};
-use crate::ir::cfg::{CFG, BlockId, Terminator, Statement, Expr};
+use crate::ir::cfg::{CFG, BlockId, Terminator, Statement, Expr, CmpOp as CfgCmpOp};
 use std::collections::HashMap;
 
 struct Context<'a> {
@@ -192,19 +192,23 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
         }
 
         ast::Statement::If { cond, then_block, else_block } => {
-            let cond_reg = lower_expression(ctx, cond);
-            
             let then_bb = ctx.add_block();
             let else_bb = ctx.add_block();
             let merge_bb = ctx.add_block();
-            
-            // Current block branches based on condition
-            ctx.set_terminator(Terminator::Branch {
-                cond: cond_reg,
-                then_block: then_bb,
-                else_block: else_bb,
-            });
-            
+
+            if let Some((op, lhs, rhs)) = lower_condition(ctx, cond) {
+                ctx.set_terminator(Terminator::CondBranch {
+                    op, lhs, rhs, then_block: then_bb, else_block: else_bb,
+                });
+            } else {
+                let cond_reg = lower_expression(ctx, cond);
+                ctx.set_terminator(Terminator::Branch {
+                    cond: cond_reg,
+                    then_block: then_bb,
+                    else_block: else_bb,
+                });
+            }
+
             // Emit then block
             ctx.switch_to(then_bb);
             for s in then_block {
@@ -214,7 +218,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             if matches!(ctx.cfg.block(ctx.current_block).terminator, Terminator::None) {
                 ctx.set_terminator(Terminator::Jump(merge_bb));
             }
-            
+
             // Emit else block
             ctx.switch_to(else_bb);
             for s in else_block {
@@ -224,7 +228,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             if matches!(ctx.cfg.block(ctx.current_block).terminator, Terminator::None) {
                 ctx.set_terminator(Terminator::Jump(merge_bb));
             }
-            
+
             // Continue in merge block
             ctx.switch_to(merge_bb);
         }
@@ -233,19 +237,27 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             let header_bb = ctx.add_block();
             let body_bb = ctx.add_block();
             let exit_bb = ctx.add_block();
-            
+
             // Current block jumps to loop header
             ctx.set_terminator(Terminator::Jump(header_bb));
-            
+
             // Header evaluates condition and branches
             ctx.switch_to(header_bb);
-            let cond_reg = lower_expression(ctx, cond);
-            ctx.set_terminator(Terminator::Branch {
-                cond: cond_reg,
-                then_block: body_bb,
-                else_block: exit_bb,
-            });
-            
+            if let Some((op, lhs, rhs)) = lower_condition(ctx, cond) {
+                ctx.set_terminator(Terminator::CondBranch {
+                    op, lhs, rhs,
+                    then_block: body_bb,
+                    else_block: exit_bb,
+                });
+            } else {
+                let cond_reg = lower_expression(ctx, cond);
+                ctx.set_terminator(Terminator::Branch {
+                    cond: cond_reg,
+                    then_block: body_bb,
+                    else_block: exit_bb,
+                });
+            }
+
             // Body executes and loops back to header
             ctx.switch_to(body_bb);
             for s in body {
@@ -255,7 +267,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             if matches!(ctx.cfg.block(ctx.current_block).terminator, Terminator::None) {
                 ctx.set_terminator(Terminator::Jump(header_bb));
             }
-            
+
             // Continue in exit block
             ctx.switch_to(exit_bb);
         }
@@ -291,6 +303,26 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
             ));
         }
     }
+}
+
+fn lower_condition(ctx: &mut Context, expr: &ast::Expr) -> Option<(CfgCmpOp, VirtualRegister, VirtualRegister)> {
+    if let ast::Expr::Binary { op, left, right } = expr {
+        let cmp = match op {
+            ast::BinaryOp::Eq => Some(CfgCmpOp::Eq),
+            ast::BinaryOp::Ne => Some(CfgCmpOp::Ne),
+            ast::BinaryOp::Lt => Some(CfgCmpOp::Lt),
+            ast::BinaryOp::Le => Some(CfgCmpOp::Le),
+            ast::BinaryOp::Gt => Some(CfgCmpOp::Gt),
+            ast::BinaryOp::Ge => Some(CfgCmpOp::Ge),
+            _ => None,
+        };
+        if let Some(op) = cmp {
+            let lhs = lower_expression(ctx, left);
+            let rhs = lower_expression(ctx, right);
+            return Some((op, lhs, rhs));
+        }
+    }
+    None
 }
 
 fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
@@ -357,29 +389,27 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
         ast::Expr::Binary { op, left, right } => {
             let left_reg = lower_expression(ctx, left);
             let right_reg = lower_expression(ctx, right);
-            
+
             let ir_op = match op {
-                ast::BinaryOp::Add => Op::Add,
-                ast::BinaryOp::Sub => Op::Sub,
-                ast::BinaryOp::Mul => Op::Mul,
-                ast::BinaryOp::Div => Op::Div,
-                ast::BinaryOp::Mod => Op::Rem,
+                ast::BinaryOp::Add    => Op::Add,
+                ast::BinaryOp::Sub    => Op::Sub,
+                ast::BinaryOp::Mul    => Op::Mul,
+                ast::BinaryOp::Div    => Op::Div,
+                ast::BinaryOp::Mod    => Op::Rem,
                 ast::BinaryOp::BitAnd => Op::And,
-                ast::BinaryOp::BitOr => Op::Or,
+                ast::BinaryOp::BitOr  => Op::Or,
                 ast::BinaryOp::BitXor => Op::Xor,
-                ast::BinaryOp::Shl => Op::Sll,
-                ast::BinaryOp::Shr => Op::Srl,
-                ast::BinaryOp::Eq => Op::Eq,
-                ast::BinaryOp::Ne => Op::Ne,
-                ast::BinaryOp::Lt => Op::Lt,
-                ast::BinaryOp::Le => Op::Le,
-                ast::BinaryOp::Gt => Op::Gt,
-                ast::BinaryOp::Ge => Op::Ge,
+                ast::BinaryOp::Shl    => Op::Sll,
+                ast::BinaryOp::Shr    => Op::Srl,
                 // TODO: Implement && and || short circuiting
-                ast::BinaryOp::And => Op::And,
-                ast::BinaryOp::Or => Op::Or,
+                ast::BinaryOp::And    => Op::And,
+                ast::BinaryOp::Or     => Op::Or,
+                ast::BinaryOp::Eq | ast::BinaryOp::Ne |
+                ast::BinaryOp::Lt | ast::BinaryOp::Le |
+                ast::BinaryOp::Gt | ast::BinaryOp::Ge =>
+                    unimplemented!("comparison as stored value not yet supported; use in if/while condition"),
             };
-            
+
             let dest = ctx.new_register();
             ctx.emit_instr(Instruction::new(
                 ir_op,
@@ -388,7 +418,7 @@ fn lower_expression(ctx: &mut Context, expr: &ast::Expr) -> VirtualRegister {
             ));
             dest
         }
-        
+
         ast::Expr::Unary { op, operand } => {
             let operand_reg = lower_expression(ctx, operand);
             

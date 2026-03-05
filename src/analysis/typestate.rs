@@ -293,7 +293,8 @@ fn verify_block_recursive(
             }
         }
         
-        Terminator::Branch { cond: _, then_block, else_block } => {
+        Terminator::Branch { cond: _, then_block, else_block } |
+        Terminator::CondBranch { then_block, else_block, .. } => {
             let mut then_env = state_env.clone();
             let mut else_env = state_env.clone();
             

@@ -78,6 +78,22 @@ impl CFG {
                     }
                 }
 
+                Terminator::CondBranch { op, lhs, rhs, then_block, else_block } => {
+                    instructions.push(Instruction::new(
+                        Op::BranchCond(*op, label(*else_block)),
+                        None,
+                        vec![*lhs, *rhs],
+                    ));
+
+                    if *then_block != block.id + 1 {
+                        instructions.push(Instruction::new(
+                            Op::Jump(label(*then_block)),
+                            None,
+                            vec![],
+                        ));
+                    }
+                }
+
                 Terminator::Return(val) => {
                     instructions.push(Instruction::new(
                         Op::Ret(*val),
@@ -174,11 +190,21 @@ pub enum Expr {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CmpOp { Eq, Ne, Lt, Le, Gt, Ge }
+
 #[derive(Debug, Clone)]
 pub enum Terminator {
     Jump(BlockId),          // Unconditional jump to another block
-    Branch {                // Conditional jump to another block
+    Branch {                // Conditional jump to another block (based on cond)
         cond: VirtualRegister,
+        then_block: BlockId,
+        else_block: BlockId,
+    },
+    CondBranch {            // Conditional jump on a comparison of two registers
+        op: CmpOp,
+        lhs: VirtualRegister,
+        rhs: VirtualRegister,
         then_block: BlockId,
         else_block: BlockId,
     },

@@ -1,6 +1,7 @@
 pub mod lower;
 pub mod cfg;
 
+pub use cfg::CmpOp;
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct VirtualRegister {
     pub id: usize,
@@ -24,9 +25,10 @@ pub enum Op {
     MovArg(usize),                  // mv a0, t1
     Call(String),                   // call func
     Ret(Option<VirtualRegister>),   // [mv a0, t1] ret
-    Label(String),                  // .X_loop_start
-    Jump(String),                   // j .X_loop_start
-    BranchIfFalse(String),          // beqz t0, .L_end
+    Label(String),                  // .LBB_func_0
+    Jump(String),                   // j .LBB_func_0
+    BranchIfFalse(String),          // beqz t0, .LBB_func_end
+    BranchCond(CmpOp, String),      // beq/bne/blt/bge rs1, rs2, label
     Add,                            // add rd, rs1, rs2
     Sub,                            // sub rd, rs1, rs2
     Mul,                            // mul rd, rs1, rs2
@@ -39,12 +41,6 @@ pub enum Op {
     Srl,                            // srl rd, rs1, rs2 (shift right logical)
     Neg,                            // neg rd, rs (sub rd, x0, rs)
     Not,                            // not rd, rs (xori rd, rs, -1)
-    Eq,                             // seq: set if equal
-    Ne,                             // sne: set if not equal
-    Lt,                             // slt rd, rs1, rs2
-    Le,                             // sle: set if less or equal
-    Gt,                             // sgt: set if greater
-    Ge,                             // sge: set if greater or equal
 }
 
 impl Instruction {

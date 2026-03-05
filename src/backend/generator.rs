@@ -1,4 +1,5 @@
 use crate::ir::{Instruction, Op};
+use crate::ir::cfg::CmpOp;
 use crate::backend::regalloc::Allocation;
 use std::fmt::Write;
 
@@ -96,6 +97,19 @@ pub fn generate(
                 let cond_reg = allocation.get(&instr.args[0]).unwrap();
                 writeln!(output, "    beqz {}, {}", cond_reg, target)?;
             }
+
+            Op::BranchCond(op, label) => {
+                let lhs = allocation.get(&instr.args[0]).unwrap();
+                let rhs = allocation.get(&instr.args[1]).unwrap();
+                match op {
+                    CmpOp::Eq => writeln!(output, "    bne {}, {}, {}", lhs, rhs, label)?,
+                    CmpOp::Ne => writeln!(output, "    beq {}, {}, {}", lhs, rhs, label)?,
+                    CmpOp::Lt => writeln!(output, "    bge {}, {}, {}", lhs, rhs, label)?,
+                    CmpOp::Ge => writeln!(output, "    blt {}, {}, {}", lhs, rhs, label)?,
+                    CmpOp::Le => writeln!(output, "    blt {}, {}, {}", rhs, lhs, label)?,
+                    CmpOp::Gt => writeln!(output, "    bge {}, {}, {}", rhs, lhs, label)?,
+                }
+            }
             
             Op::Add => {
                 let rd = allocation.get(&instr.destination.unwrap()).unwrap();
@@ -177,48 +191,6 @@ pub fn generate(
                 let rd = allocation.get(&instr.destination.unwrap()).unwrap();
                 let rs = allocation.get(&instr.args[0]).unwrap();
                 writeln!(output, "    not {}, {}", rd, rs)?;
-            }
-            
-            Op::Eq => {
-                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
-                let rs1 = allocation.get(&instr.args[0]).unwrap();
-                let rs2 = allocation.get(&instr.args[1]).unwrap();
-                writeln!(output, "    seq {}, {}, {}", rd, rs1, rs2)?;
-            }
-            
-            Op::Ne => {
-                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
-                let rs1 = allocation.get(&instr.args[0]).unwrap();
-                let rs2 = allocation.get(&instr.args[1]).unwrap();
-                writeln!(output, "    sne {}, {}, {}", rd, rs1, rs2)?;
-            }
-            
-            Op::Lt => {
-                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
-                let rs1 = allocation.get(&instr.args[0]).unwrap();
-                let rs2 = allocation.get(&instr.args[1]).unwrap();
-                writeln!(output, "    slt {}, {}, {}", rd, rs1, rs2)?;
-            }
-            
-            Op::Le => {
-                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
-                let rs1 = allocation.get(&instr.args[0]).unwrap();
-                let rs2 = allocation.get(&instr.args[1]).unwrap();
-                writeln!(output, "    sle {}, {}, {}", rd, rs1, rs2)?;
-            }
-            
-            Op::Gt => {
-                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
-                let rs1 = allocation.get(&instr.args[0]).unwrap();
-                let rs2 = allocation.get(&instr.args[1]).unwrap();
-                writeln!(output, "    sgt {}, {}, {}", rd, rs1, rs2)?;
-            }
-            
-            Op::Ge => {
-                let rd = allocation.get(&instr.destination.unwrap()).unwrap();
-                let rs1 = allocation.get(&instr.args[0]).unwrap();
-                let rs2 = allocation.get(&instr.args[1]).unwrap();
-                writeln!(output, "    sge {}, {}, {}", rd, rs1, rs2)?;
             }
         }
     }
