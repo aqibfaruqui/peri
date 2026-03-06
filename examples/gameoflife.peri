@@ -36,44 +36,43 @@ const DELAY = 50000;
 
 // TODO: Consider support for accepting Draw<Idle|Busy> -> Draw<Idle>
 fn wait_engine() :: DRAW<Busy> -> DRAW<Idle> {
-    let status = DRAW.STATUS;
+    let status = DRAW::STATUS & 0xFF;
     while (status != 0) {
-        status = DRAW.STATUS;
+        status = DRAW::STATUS & 0xFF;
     }
 }
 
 fn clear_screen(colour: u8, base: u32) :: DRAW<Idle> -> DRAW<Busy> {
-    DRAW.R0 = colour;
-    DRAW.R1 = base;
-    DRAW.COMMAND = 0;
+    DRAW::R0 = colour;
+    DRAW::R1 = base;
+    DRAW::COMMAND = 0;
 }
 
-fn draw_seed(base: u32) :: DRAW<Idle> -> DRAW<Busy> {
-    DRAW.R0 = 600;
-    DRAW.R1 = 0;
-    DRAW.R2 = 1;
-    DRAW.R3 = 1;
-    DRAW.R4 = 0x29814;
-    DRAW.R5 = 0;
-    DRAW.R6 = ALIVE;
-    DRAW.R7 = 1;
-    DRAW.COMMAND = 1;
+fn draw_seed() :: DRAW<Idle> -> DRAW<Busy> {
+    DRAW::R0 = 600;
+    DRAW::R1 = 0;
+    DRAW::R2 = 1;
+    DRAW::R3 = 1;
+    DRAW::R4 = 0x29814;
+    DRAW::R5 = 0;
+    DRAW::R6 = ALIVE;
+    DRAW::COMMAND = 1;
 }
 
 fn run_game_of_life(read_base: u32, write_base: u32) :: DRAW<Idle> -> DRAW<Busy> {
-    DRAW.R0 = read_base;
-    DRAW.R1 = write_base;
-    DRAW.R2 = 640;
-    DRAW.R3 = 480;
-    DRAW.R4 = ALIVE;
-    DRAW.R5 = DEAD;
-    DRAW.R6 = 2;
-    DRAW.R7 = 0;
-    DRAW.COMMAND = 2;
+    DRAW::R0 = read_base;
+    DRAW::R1 = write_base;
+    DRAW::R2 = 640;
+    DRAW::R3 = 480;
+    DRAW::R4 = ALIVE;
+    DRAW::R5 = DEAD;
+    DRAW::R6 = 2;
+    DRAW::R7 = 0;
+    DRAW::COMMAND = 2;
 }
 
 fn swap_to_frame(base: u32) :: VDUC<Idle> -> VDUC<Idle> {
-    VDUC.DISPLAY = base;
+    VDUC::DISPLAY = base;
 }
 
 fn sleep(delay: u32) {
@@ -83,20 +82,25 @@ fn sleep(delay: u32) {
 }
 
 fn main() {
-    clear_screen(DEAD, F0_BYTE);
+    swap_to_frame(F0_BYTE);
+    clear_screen(DEAD, F0_WORD);
     wait_engine();
-    clear_screen(DEAD, F1_BYTE);
+
+    swap_to_frame(F1_BYTE);
+    clear_screen(DEAD, F1_WORD);
     wait_engine();
-    draw_seed(F0_BYTE);
+
+    swap_to_frame(F0_BYTE);
+    draw_seed();
     wait_engine();
 
     while (true) {
-        run_game_of_life(F0_BYTE, F1_BYTE);
+        run_game_of_life(F0_WORD, F1_WORD);
         wait_engine();
         swap_to_frame(F1_BYTE);
         sleep(DELAY);
 
-        run_game_of_life(F1_BYTE, F0_BYTE);
+        run_game_of_life(F1_WORD, F0_WORD);
         wait_engine();
         swap_to_frame(F0_BYTE);
         sleep(DELAY);
