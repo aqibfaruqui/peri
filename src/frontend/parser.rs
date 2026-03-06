@@ -66,7 +66,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             .map(|(name, args)| ast::Expr::FnCall { name, args });
 
         let peripheral_read = ident
-            .then_ignore(just('.'))
+            .then_ignore(just("::"))
             .then(ident)
             .map(|(peripheral, register)| ast::Expr::PeripheralRead { peripheral, register });
 
@@ -217,7 +217,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             .map(|expr| ast::Statement::Return { expr });
 
         let peripheral_write_stmt = ident
-            .then_ignore(just('.'))
+            .then_ignore(just("::"))
             .then(ident)
             .then_ignore(equals)
             .then(expr.clone())

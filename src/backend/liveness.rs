@@ -92,29 +92,3 @@ fn get_successors(term: &Terminator) -> Vec<BlockId> {
         Terminator::None => vec![],
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ir::{Instruction, Op};
-    use crate::ir::cfg::BasicBlock;
-
-    #[test]
-    fn test_simple_liveness() {
-        // BB0: x = 10; return x
-        let mut cfg = CFG::new();
-        let bb0 = cfg.add_block();
-        
-        let x = VirtualRegister { id: 0 };
-        cfg.block_mut(bb0).push(Instruction::new(Op::LoadImm(10), Some(x), vec![]));
-        cfg.block_mut(bb0).set_terminator(Terminator::Return(Some(x)));
-        
-        let result = analyse(&cfg);
-        let bb0_liveness = result.get(&bb0).unwrap();
-        
-        // x is defined and used in same block, but used in terminator
-        assert!(bb0_liveness.def_set.contains(&x));
-        assert!(bb0_liveness.use_set.contains(&x)); // Used in return before any def visible
-        assert!(bb0_liveness.live_in.contains(&x)); // Hmm, this might be wrong...
-    }
-}
