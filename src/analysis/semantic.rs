@@ -4,6 +4,11 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum SemanticError {
+    MissingMain,
+    InvalidMainArity {
+        arity: usize,
+    },
+
     UndefinedVariable {
         func_name: String,
         var_name: String,
@@ -34,6 +39,14 @@ pub enum SemanticError {
 impl fmt::Display for SemanticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            SemanticError::MissingMain => {
+                write!(f, "Program must contain a 'main()' function")
+            }
+
+            SemanticError::InvalidMainArity { arity } => {
+                write!(f, "Function 'main' must have 0 arguments, but found {}", arity)
+            }
+
             SemanticError::UndefinedVariable { func_name, var_name } => {
                 write!(f, "Undefined variable '{}' in function '{}'", var_name, func_name)
             }
@@ -79,6 +92,14 @@ pub fn check(program: &ast::Program) -> Result<(), Vec<SemanticError>> {
 
     for func in &program.functions {
         check_function(func, &func_signatures, &global_consts, &mut errors);
+    }
+
+    if !func_signatures.contains_key("main") {
+        errors.push(SemanticError::MissingMain);
+    } else if let Some(&arity) = func_signatures.get("main") {
+        if arity != 0 {
+            errors.push(SemanticError::InvalidMainArity { arity });
+        }
     }
 
     if errors.is_empty() {
