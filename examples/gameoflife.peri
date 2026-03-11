@@ -33,6 +33,7 @@ const F1_BYTE = 0x4F000;
 const ALIVE = 0xFF;
 const DEAD = 0x00;
 const DELAY = 50000;
+const REPEAT = 100;
 
 // TODO: Consider support for accepting Draw<Idle|Busy> -> Draw<Idle>
 fn wait_engine() :: DRAW<Busy> -> DRAW<Idle> {
@@ -82,27 +83,32 @@ fn sleep(delay: u32) {
 }
 
 fn main() {
-    swap_to_frame(F0_BYTE);
-    clear_screen(DEAD, F0_WORD);
-    wait_engine();
-
-    swap_to_frame(F1_BYTE);
-    clear_screen(DEAD, F1_WORD);
-    wait_engine();
-
-    swap_to_frame(F0_BYTE);
-    draw_seed();
-    wait_engine();
-
     while (true) {
-        run_game_of_life(F0_WORD, F1_WORD);
-        wait_engine();
-        swap_to_frame(F1_BYTE);
-        sleep(DELAY);
-
-        run_game_of_life(F1_WORD, F0_WORD);
-        wait_engine();
         swap_to_frame(F0_BYTE);
-        sleep(DELAY);
-    }   
+        clear_screen(DEAD, F0_WORD);
+        wait_engine();
+
+        swap_to_frame(F1_BYTE);
+        clear_screen(DEAD, F1_WORD);
+        wait_engine();
+
+        swap_to_frame(F0_BYTE);
+        draw_seed();
+        wait_engine();
+
+        let count = REPEAT;
+        while (count > 0) {
+            run_game_of_life(F0_WORD, F1_WORD);
+            wait_engine();
+            swap_to_frame(F1_BYTE);
+            sleep(DELAY);
+
+            run_game_of_life(F1_WORD, F0_WORD);
+            wait_engine();
+            swap_to_frame(F0_BYTE);
+            sleep(DELAY);
+            
+            count = count - 1;
+        }
+    }
 }
