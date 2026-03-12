@@ -1,27 +1,41 @@
 use crate::ir::{Instruction, Op};
 use crate::ir::cfg::CmpOp;
-use crate::backend::regalloc::Allocation;
+use crate::backend::regalloc::AllocationResult;
 use std::fmt::Write;
 
+/* RV32I Stack frame layout (grows downward, 16-byte aligned)
+
+  sp + frame_size - 4  <- ra
+  sp + frame_size - 8  <- s_regs[0]  (first used callee-saved reg)
+  sp + frame_size - 12 <- s_regs[1]
+  ...
+  sp + 0
+
+frame_size = round_up_16(4 + 4 * num_s_regs) */
+
 pub fn generate(
-    function: &str, 
-    instructions: &Vec<Instruction>, 
-    allocation: &Allocation
+    function: &str,
+    instructions: &[Instruction],
+    result: &AllocationResult,
 ) -> Result<String, std::fmt::Error> {
+    let allocation = &result.allocation;
+    let s_regs = &result.used_s_regs;
+    let raw = 4 + 4 * s_regs.len();
+    let frame_size = (raw + 15) & !15;
+    let ra_offset = frame_size - 4;
+
     let mut output = String::new();
 
-    /*
-     * .section .text
-     * .global example_func
-     * example_func:
-     */
     writeln!(output, ".section .text")?;
     writeln!(output, ".global {}", function)?;
     writeln!(output, "{}:", function)?;
+    writeln!(output, "    addi sp, sp, -{}", frame_size)?;
+    writeln!(output, "    sw ra, {}(sp)", ra_offset)?;
 
-    // TODO: Calculate necessary stack offset from function arguments
-    writeln!(output, "    addi sp, sp, -16")?;
-    writeln!(output, "    sw ra, 12(sp)")?;
+    for (i, reg) in s_regs.iter().enumerate() {
+        let offset = ra_offset as isize - 4 - (i as isize * 4);
+        writeln!(output, "    sw {}, {}(sp)", reg, offset)?;
+    }
 
     for instr in instructions {
         match &instr.operation {
@@ -79,9 +93,13 @@ pub fn generate(
                     writeln!(output, "    mv a0, {}", rs)?;
                 }
 
-                // TODO: Update stack offsets with calculation of function arguments
-                writeln!(output, "    lw ra, 12(sp)")?;
-                writeln!(output, "    addi sp, sp, 16")?;
+                for (i, reg) in s_regs.iter().enumerate() {
+                    let offset = ra_offset as isize - 4 - (i as isize * 4);
+                    writeln!(output, "    lw {}, {}(sp)", reg, offset)?;
+                }
+
+                writeln!(output, "    lw ra, {}(sp)", ra_offset)?;
+                writeln!(output, "    addi sp, sp, {}", frame_size)?;
                 writeln!(output, "    ret\n")?;
             }
 
