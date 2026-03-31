@@ -1,0 +1,49 @@
+peripheral LED at 0x0001_0000 {
+    states: Off, On;
+    initial: Off;
+
+    registers u32 {
+        CTRL at 0x00;
+    }
+}
+
+const RED = 0x1;
+const AMBER = 0x2;
+const GREEN = 0x4;
+const BLUE = 0x8;
+
+const DELAY = 500000;
+
+fn set_led(colour: u8) :: LED<Off> -> LED<On> {
+    LED::CTRL = LED::CTRL | colour;
+}
+
+fn clear_led() :: LED<On> -> LED<Off> {
+    LED::CTRL = 0;
+}
+
+fn sleep(delay: u32) {
+    while (delay > 0) {
+        delay = delay - 1;
+    }
+}
+
+fn main() {
+    while (true) {
+        set_led(RED);
+        sleep(DELAY);
+        clear_led();
+        
+        set_led(AMBER);
+        sleep(DELAY);
+        clear_led();
+        
+        set_led(GREEN);
+        sleep(DELAY);
+        clear_led();
+        
+        set_led(BLUE);
+        sleep(DELAY);
+        clear_led();
+    }
+}
