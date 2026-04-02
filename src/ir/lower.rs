@@ -174,7 +174,7 @@ fn lower_statement(ctx: &mut Context, stmt: &ast::Statement) {
                     ctx.emit_stmt(Statement::PeripheralDriverCall {
                         function: name.clone(),
                         peripheral: sig.peripheral.clone(),
-                        from_state: sig.input_state.clone(),
+                        from_states: sig.input_states.clone(),
                         to_state: sig.output_state.clone(),
                     });
                 } else {

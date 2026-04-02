@@ -1,3 +1,7 @@
+use std::collections::BTreeSet;
+
+pub type TypeStateSet = BTreeSet<String>;
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub peripherals: Vec<Peripheral>,
@@ -46,8 +50,8 @@ pub struct Function {
 #[derive(Debug, Clone)]
 pub struct TypeState {
     pub peripheral: String,
-    pub input_state: String,
-    pub output_state: String,
+    pub input_states: Vec<TypeStateSet>,
+    pub output_state: TypeStateSet,
 }
 
 #[derive(Debug, Clone)]

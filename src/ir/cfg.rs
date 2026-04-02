@@ -1,4 +1,5 @@
 use crate::ir::{Instruction, Op, VirtualRegister};
+use crate::frontend::ast::TypeStateSet;
 
 pub type BlockId = usize;
 
@@ -137,8 +138,8 @@ pub enum Statement {
     PeripheralDriverCall {
         function: String,
         peripheral: String,
-        from_state: String,
-        to_state: String,
+        from_states: Vec<TypeStateSet>,
+        to_state: TypeStateSet,
     },
     
     Let {

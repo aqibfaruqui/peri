@@ -1,4 +1,4 @@
-use crate::frontend::ast;
+use crate::frontend::ast::{self, TypeStateSet};
 use chumsky::prelude::*;
 use chumsky::pratt::*;
 use chumsky::Parser;
@@ -307,20 +307,51 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         });
 
     /*
-     * Typestate Signature Parser (optional)
-     * :: Peripheral<InputState> -> Peripheral<OutputState>
+     * Typestate Signature Parser
+     *
+     * Examples:
+     *   P<Ready>             input = [{"Ready"}], output = {"Ready"}
+     *   P<A | B>             input = [{"A"}, {"B"}]
+     *   P<A & B>             input = [{"A","B"}]
+     *   P<A | B & C>         input = [{"A"}, {"B","C"}]
+     *   fn f() :: P<A | B> -> P<C & D>
      */
-    let type_state = ident
-        .then(ident.delimited_by(just('<'), just('>')));
 
-    let signature = just("::").padded()
-        .ignore_then(type_state)
-        .then_ignore(just("->").padded())
-        .then(type_state)
-        .map(|((type_1, state_1), (_type_2, state_2))| ast::TypeState {
-            peripheral: type_1,
-            input_state: state_1,
-            output_state: state_2
+    let ts_label = text::ident()
+        .padded_by(ws.clone())
+        .map(|s: &str| s.to_string());
+
+    let ts_set = ts_label.clone()
+        .separated_by(just('&').padded_by(ws.clone()))
+        .at_least(1)
+        .collect::<Vec<String>>()
+        .map(|labels| labels.into_iter().collect::<TypeStateSet>());
+
+    let ts_set_vec = ts_set.clone()
+        .separated_by(just('|').padded_by(ws.clone()))
+        .at_least(1)
+        .collect::<Vec<TypeStateSet>>();
+
+    let sig_input = ident.clone()
+        .then(ts_set_vec.clone().delimited_by(
+            just('<').padded_by(ws.clone()),
+            just('>').padded_by(ws.clone()),
+        ));
+
+    let sig_output = ident.clone()
+        .then(ts_set.clone().delimited_by(
+            just('<').padded_by(ws.clone()),
+            just('>').padded_by(ws.clone()),
+        ));
+
+    let signature = just("::").padded_by(ws.clone())
+        .ignore_then(sig_input)
+        .then_ignore(just("->").padded_by(ws.clone()))
+        .then(sig_output)
+        .map(|((periph, input_states), (_periph_out, output_state))| ast::TypeState {
+            peripheral: periph,
+            input_states,
+            output_state,
         });
 
     /* 

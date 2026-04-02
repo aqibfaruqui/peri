@@ -1,11 +1,11 @@
-use crate::frontend::ast;
+use crate::frontend::ast::{self, TypeStateSet};
 use crate::ir::cfg::{CFG, Statement, Expr, Terminator};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 
 // Σ : Peripheral → State
-pub type StateEnv = HashMap<String, String>;
+pub type StateEnv = HashMap<String, TypeStateSet>;
 
 #[derive(Debug)]
 pub enum TypestateError {
@@ -14,34 +14,34 @@ pub enum TypestateError {
         func_name: String,
         called_from: String,
         peripheral: String,
-        expected_state: String,
-        actual_state: String,
+        candidate_states: Vec<TypeStateSet>,
+        actual_state: TypeStateSet,
     },
-    
+
     // Violates the Branch typing rule: Σ ⊢ then : Σ₁ and Σ ⊢ else : Σ₂ requires Σ₁ = Σ₂
     BranchStateMismatch {
         func_name: String,
         peripheral: String,
-        then_state: String,
-        else_state: String,
+        then_state: TypeStateSet,
+        else_state: TypeStateSet,
     },
-    
+
     // Violates the While rule: Σ ⊢ body : Σ' requires Σ = Σ'
     LoopChangesState {
         func_name: String,
         peripheral: String,
-        before: String,
-        after: String,
+        before: TypeStateSet,
+        after: TypeStateSet,
     },
-    
+
     // Peripheral driver's derived effect != declared signature
     WrongExitState {
         func_name: String,
         peripheral: String,
-        expected: String,
-        actual: String,
+        expected: TypeStateSet,
+        actual: TypeStateSet,
     },
-    
+
     // Unknown peripheral referenced
     UnknownPeripheral {
         func_name: String,
@@ -49,41 +49,71 @@ pub enum TypestateError {
     },
 }
 
+fn fmt_typestate_set(s: &TypeStateSet) -> String {
+    s.iter().cloned().collect::<Vec<_>>().join(" & ")
+}
+
+fn fmt_typestate_set_vec(v: &Vec<TypeStateSet>) -> String {
+    v.iter()
+        .map(|s| {
+            if s.len() > 1 {
+                format!("({})", fmt_typestate_set(s))
+            } else {
+                fmt_typestate_set(s)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
 impl fmt::Display for TypestateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TypestateError::InvalidTransition { func_name, called_from, peripheral, expected_state, actual_state } => {
+            TypestateError::InvalidTransition { func_name, called_from, peripheral, candidate_states, actual_state } => {
                 write!(
-                    f, "Call to '{}' requires '{}' in state '{}', but found '{}', called from '{}'",
-                    func_name, peripheral, expected_state, actual_state, called_from
+                    f,
+                    "Call to '{}' requires '{}' in state '{}', but found '{}' (called from '{}')",
+                    func_name,
+                    peripheral,
+                    fmt_typestate_set_vec(candidate_states),
+                    fmt_typestate_set(actual_state),
+                    called_from,
                 )
             }
 
             TypestateError::BranchStateMismatch { func_name, peripheral, then_state, else_state } => {
                 write!(
-                    f, "Branch in {} leaves '{}' in different states: then = '{}', else = '{}'",
-                    func_name, peripheral, then_state, else_state
+                    f,
+                    "Branch in '{}' leaves '{}' in different states: then = '{}', else = '{}'",
+                    func_name, peripheral,
+                    fmt_typestate_set(then_state),
+                    fmt_typestate_set(else_state),
                 )
             }
 
             TypestateError::LoopChangesState { func_name, peripheral, before, after } => {
                 write!(
-                    f, "Loop in {} changes state of '{}' from '{}' to '{}'",
-                    func_name, peripheral, before, after
+                    f,
+                    "Loop in '{}' changes state of '{}': was '{}', now '{}'",
+                    func_name, peripheral,
+                    fmt_typestate_set(before),
+                    fmt_typestate_set(after),
                 )
             }
 
             TypestateError::WrongExitState { func_name, peripheral, expected, actual } => {
                 write!(
-                    f, "Function '{}' declares output state '{}' for '{}', but body produces '{}'",
-                    func_name, expected, peripheral, actual
+                    f,
+                    "Function '{}' declares output '{}' for '{}', but body produces '{}'",
+                    func_name,
+                    fmt_typestate_set(expected),
+                    peripheral,
+                    fmt_typestate_set(actual),
                 )
             }
 
-            TypestateError::UnknownPeripheral { func_name,name } => {
-                write!(
-                    f, "Unknown peripheral '{}' in function '{}'", 
-                    name, func_name)
+            TypestateError::UnknownPeripheral { func_name, name } => {
+                write!(f, "Unknown peripheral '{}' in function '{}'", name, func_name)
             }
         }
     }
@@ -93,12 +123,12 @@ impl fmt::Display for TypestateError {
 enum FunctionType {
     // Has a typestate signature but calls no other driver functions
     // Axioms in our type system
-    LeafDriver,
-    
+    Leaf,
+
     // Has a typestate signature and calls other driver functions
     // Derived in our type system by verifying body matches their signature
-    CompositeDriver,
-    
+    Composite,
+
     // No typestate signature, calls driver functions
     // Verified by checking all driver calls chain correctly
     Orchestration,
@@ -131,11 +161,14 @@ fn build_signature_map(program: &ast::Program) -> HashMap<String, ast::TypeState
 }
 
 fn init_state_env(peripherals: &[ast::Peripheral]) -> StateEnv {
-    let mut env = StateEnv::new();
-    for p in peripherals {
-        env.insert(p.name.clone(), p.initial.clone());
-    }
-    env
+    peripherals
+        .iter()
+        .map(|p| {
+            let mut set = TypeStateSet::new();
+            set.insert(p.initial.clone());
+            (p.name.clone(), set)
+        })
+        .collect()
 }
 
 fn classify_function(
@@ -145,10 +178,10 @@ fn classify_function(
 ) -> FunctionType {
     let has_signature = func.signature.is_some();
     let calls_drivers = cfg_calls_drivers(cfg, signatures);
-    
+
     match (has_signature, calls_drivers) {
-        (true, false)  => FunctionType::LeafDriver,
-        (true, true)   => FunctionType::CompositeDriver,
+        (true, false)  => FunctionType::Leaf,
+        (true, true)   => FunctionType::Composite,
         (false, _)     => FunctionType::Orchestration,
     }
 }
@@ -172,9 +205,9 @@ fn cfg_calls_drivers(cfg: &CFG, signatures: &HashMap<String, ast::TypeState>) ->
 
 /* Verify a single function's typestate correctness
  *
- *   LeafDriver:       Axiom: signature is trusted, no verification needed
- *   CompositeDriver:  Derive: compose called driver signatures, check result matches declaration
- *   Orchestration:    Derive: compose called driver signatures, check all transitions are valid
+ *   Leaf:          Axiom: signature is trusted, no verification needed
+ *   Composite:     Derive: compose called driver signatures, check result matches declaration
+ *   Orchestration: Derive: compose called driver signatures, check all transitions are valid
  */
 fn verify_function(
     func: &ast::Function,
@@ -184,15 +217,15 @@ fn verify_function(
 ) -> Result<(), TypestateError> {
     let kind = classify_function(func, cfg, signatures);
     let func_name = &func.name;
-    
+
     match kind {
         /* Axiom: trusted, no verification needed
          *
          *   ────────────────────────────────── (axiom)
          *   Σ ⊢ leaf_driver() : Σ[P ↦ S_out]
          */
-        FunctionType::LeafDriver => Ok(()),
-        
+        FunctionType::Leaf => Ok(()),
+
         /* Derive: verify body composes correctly, then check against declared signature
          *
          *   Σ₀ ⊢ s₁ : Σ₁    Σ₁ ⊢ s₂ : Σ₂    ...    Σₙ₋₁ ⊢ sₙ : Σₙ
@@ -201,35 +234,35 @@ fn verify_function(
          *
          *   Then check: Σₙ(P) = declared output state
          */
-        FunctionType::CompositeDriver => {
+        FunctionType::Composite => {
             let sig = func.signature.as_ref().unwrap();
-            
-            // Start with the declared input state
-            let mut state_env = init_state_env(peripherals);
-            state_env.insert(sig.peripheral.clone(), sig.input_state.clone());
-            
-            // Derive the output state by composing driver calls in the body
-            verify_cfg(cfg, &mut state_env, signatures, func_name)?;
-            
-            // Check derived output matches declared output
-            let actual = state_env.get(&sig.peripheral)
-                .ok_or_else(|| TypestateError::UnknownPeripheral {
-                    func_name: func_name.clone(),
-                    name: sig.peripheral.clone(),
-                })?;
-            
-            if actual != &sig.output_state {
-                return Err(TypestateError::WrongExitState {
-                    func_name: func_name.clone(),
-                    peripheral: sig.peripheral.clone(),
-                    expected: sig.output_state.clone(),
-                    actual: actual.clone(),
-                });
+
+            for input_set in &sig.input_states {
+                let mut state_env = init_state_env(peripherals);
+                state_env.insert(sig.peripheral.clone(), input_set.clone());
+
+                verify_cfg(cfg, &mut state_env, signatures, func_name)?;
+
+                let actual = state_env
+                    .get(&sig.peripheral)
+                    .ok_or_else(|| TypestateError::UnknownPeripheral {
+                        func_name: func_name.clone(),
+                        name: sig.peripheral.clone(),
+                    })?;
+
+                if actual != &sig.output_state {
+                    return Err(TypestateError::WrongExitState {
+                        func_name: func_name.clone(),
+                        peripheral: sig.peripheral.clone(),
+                        expected: sig.output_state.clone(),
+                        actual: actual.clone(),
+                    });
+                }
             }
-            
+
             Ok(())
         }
-        
+
         // Orchestration: no declared signature, just verify all transitions are valid
         FunctionType::Orchestration => {
             let mut state_env = init_state_env(peripherals);
@@ -264,13 +297,13 @@ fn verify_block_recursive(
     }
     visited.insert(block_id);
     state_snapshots.insert(block_id, state_env.clone());
-    
+
     let block = cfg.block(block_id);
-    
+
     for stmt in &block.statements {
         verify_statement(stmt, state_env, signatures, func_name)?;
     }
-    
+
     match &block.terminator {
         Terminator::Jump(target) => {
             if visited.contains(target) {
@@ -292,15 +325,15 @@ fn verify_block_recursive(
                 verify_block_recursive(cfg, *target, state_env, signatures, visited, func_name, state_snapshots)?;
             }
         }
-        
+
         Terminator::Branch { cond: _, then_block, else_block } |
         Terminator::CondBranch { then_block, else_block, .. } => {
             let mut then_env = state_env.clone();
             let mut else_env = state_env.clone();
-            
+
             verify_block_recursive(cfg, *then_block, &mut then_env, signatures, &mut visited.clone(), func_name, &mut state_snapshots.clone())?;
             verify_block_recursive(cfg, *else_block, &mut else_env, signatures, &mut visited.clone(), func_name, &mut state_snapshots.clone())?;
-            
+
             for (peripheral, then_state) in &then_env {
                 if let Some(else_state) = else_env.get(peripheral) {
                     if then_state != else_state {
@@ -313,25 +346,29 @@ fn verify_block_recursive(
                     }
                 }
             }
-            
+
             *state_env = then_env;
         }
-        
+
         Terminator::Return(_) | Terminator::None => {
             // End of control flow path
         }
     }
-    
+
     Ok(())
+}
+
+fn state_satisfies(current: &TypeStateSet, candidates: &Vec<TypeStateSet>) -> bool {
+    candidates.iter().any(|set| set.is_subset(current))
 }
 
 /* Verify a single statement's effect on the state environment
  *
  * Typing rule for driver calls:
  *
- *   Σ(P) = S₁     sig(f) = P<S₁> → P<S₂>
- *   ──────────────────────────────────────── (driver-call)
- *           Σ ⊢ f() : Σ[P ↦ S₂]
+ *   ∃ s ∈ sig(f).input_states : s ⊆ Σ(P)    sig(f).output_state = S_out
+ *   ──────────────────────────────────────────────────────────────────────── (driver-call)
+ *                    Σ ⊢ f() : Σ[P ↦ S_out]
  */
 fn verify_statement(
     stmt: &Statement,
@@ -340,52 +377,54 @@ fn verify_statement(
     func_name: &str,
 ) -> Result<(), TypestateError> {
     match stmt {
-        Statement::PeripheralDriverCall { function, peripheral, from_state, to_state } => {
-            let current = state_env.get(peripheral)
+        Statement::PeripheralDriverCall { function, peripheral, from_states, to_state } => {
+            let current = state_env
+                .get(peripheral)
                 .ok_or_else(|| TypestateError::UnknownPeripheral {
                     func_name: func_name.to_string(),
                     name: peripheral.clone(),
                 })?;
-            
-            if current != from_state {
+
+            if !state_satisfies(current, from_states) {
                 return Err(TypestateError::InvalidTransition {
                     func_name: function.clone(),
                     called_from: func_name.to_string(),
                     peripheral: peripheral.clone(),
-                    expected_state: from_state.clone(),
+                    candidate_states: from_states.clone(),
                     actual_state: current.clone(),
                 });
             }
-            
+
             state_env.insert(peripheral.clone(), to_state.clone());
         }
-        
+
         Statement::Expr { expr } => {
             if let Expr::FnCall { name, .. } = expr {
                 if let Some(sig) = signatures.get(name) {
-                    let current = state_env.get(&sig.peripheral)
+                    let current = state_env
+                        .get(&sig.peripheral)
                         .ok_or_else(|| TypestateError::UnknownPeripheral {
                             func_name: func_name.to_string(),
                             name: sig.peripheral.clone(),
                         })?;
-                    
-                    if current != &sig.input_state {
+
+                    if !state_satisfies(current, &sig.input_states) {
                         return Err(TypestateError::InvalidTransition {
                             func_name: name.clone(),
                             called_from: func_name.to_string(),
                             peripheral: sig.peripheral.clone(),
-                            expected_state: sig.input_state.clone(),
+                            candidate_states: sig.input_states.clone(),
                             actual_state: current.clone(),
                         });
                     }
-                    
+
                     state_env.insert(sig.peripheral.clone(), sig.output_state.clone());
                 }
             }
         }
-        
+
         Statement::Let { .. } | Statement::Assign { .. } | Statement::PeripheralWrite { .. } => {}
     }
-    
+
     Ok(())
 }
