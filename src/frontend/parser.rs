@@ -41,6 +41,32 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         .padded_by(ws.clone())
         .map(|value| ast::Expr::IntLit { value });
 
+    let bin_digits = one_of("01_")
+        .repeated()
+        .at_least(1)
+        .to_slice()
+        .map(|s: &str| s.replace('_', ""));
+
+    let bin_lit = just("0b")
+        .ignore_then(bin_digits.map(|s| i32::from_str_radix(&s, 2).unwrap_or(0)))
+        .padded_by(ws.clone())
+        .map(|value| ast::Expr::IntLit { value });
+
+    let ctrl_char = just('\\').ignore_then(choice((
+        just('n').to('\n'),
+        just('t').to('\t'),
+        just('r').to('\r'),
+        just('\\').to('\\'),
+        just('\'').to('\''),
+        just('0').to('\0'),
+    )));
+
+    let char_lit = ctrl_char
+        .or(none_of('\'' ))
+        .delimited_by(just('\''), just('\'' ))
+        .padded_by(ws.clone())
+        .map(|c: char| ast::Expr::IntLit { value: c as i32 });
+
     let bool_lit = text::keyword("true").to(ast::Expr::IntLit { value: 1 })
         .or(text::keyword("false").to(ast::Expr::IntLit { value: 0 }))
         .padded_by(ws.clone());
@@ -73,7 +99,9 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         let var = ident
             .map(|name: String| ast::Expr::Variable { name });
 
-        let atom = hex_lit.clone()
+        let atom = char_lit.clone()
+            .or(hex_lit.clone())
+            .or(bin_lit.clone())
             .or(bool_lit.clone())
             .or(val)
             .or(fn_call)
@@ -364,6 +392,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         .or(text::keyword("u8").to(ast::Type::U8))
         .or(text::keyword("u16").to(ast::Type::U16))
         .or(text::keyword("u32").to(ast::Type::U32))
+        .or(text::keyword("char").to(ast::Type::U8))
         .padded_by(ws.clone());
 
     let argument = ident
