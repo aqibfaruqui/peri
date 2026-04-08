@@ -9,6 +9,25 @@ pub struct Program {
     pub functions: Vec<Function>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum BoundKind {
+    As,
+    Includes,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeParam {
+    pub name: String,
+    pub bound: String,
+    pub kind: BoundKind,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeStateAlias {
+    pub name: String,
+    pub definition: Vec<TypeStateSet>,
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct Peripheral {
@@ -17,6 +36,7 @@ pub struct Peripheral {
     pub states: Vec<String>,
     pub initial: String,
     pub register_blocks: Vec<RegisterBlock>,
+    pub aliases: Vec<TypeStateAlias>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +70,7 @@ pub struct Function {
 #[derive(Debug, Clone)]
 pub struct TypeState {
     pub peripheral: String,
+    pub type_params: Vec<TypeParam>,
     pub input_states: Vec<TypeStateSet>,
     pub output_state: TypeStateSet,
 }

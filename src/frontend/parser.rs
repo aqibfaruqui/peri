@@ -298,7 +298,23 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
                 .delimited_by(just('{').padded(), just('}').padded())
         )
         .map(|(reg_type, registers)| ast::RegisterBlock { reg_type, registers });
-    
+
+    let ts_label = just('!').padded_by(ws.clone())
+        .ignore_then(text::ident().padded_by(ws.clone()))
+        .map(|s: &str| format!("!{s}"))
+        .or(text::ident().padded_by(ws.clone()).map(|s: &str| s.to_string()));
+
+    let ts_set = ts_label.clone()
+        .separated_by(just('&').padded_by(ws.clone()))
+        .at_least(1)
+        .collect::<Vec<String>>()
+        .map(|labels| labels.into_iter().collect::<TypeStateSet>());
+
+    let ts_set_vec = ts_set.clone()
+        .separated_by(just('|').padded_by(ws.clone()))
+        .at_least(1)
+        .collect::<Vec<TypeStateSet>>();
+
     let peripheral = text::keyword("peripheral").padded()
         .ignore_then(ident.clone())
         .then(
@@ -325,13 +341,24 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
                 .repeated()
                 .collect()
         )
+        .then(
+            text::keyword("typestate").padded_by(ws.clone())
+                .ignore_then(ident.clone())
+                .then_ignore(just('=').padded_by(ws.clone()))
+                .then(ts_set_vec.clone())
+                .then_ignore(semicolon.clone())
+                .map(|(name, definition)| ast::TypeStateAlias { name, definition })
+                .repeated()
+                .collect::<Vec<ast::TypeStateAlias>>()
+        )
         .then_ignore(just('}').padded())
-        .map(|((((name, base_address), states), initial), register_blocks)| ast::Peripheral {
+        .map(|(((((name, base_address), states), initial), register_blocks), aliases)| ast::Peripheral {
             name,
             base_address,
             states,
             initial,
             register_blocks,
+            aliases,
         });
 
     /*
@@ -345,21 +372,6 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
      *   fn f() :: P<A | B> -> P<C & D>
      */
 
-    let ts_label = text::ident()
-        .padded_by(ws.clone())
-        .map(|s: &str| s.to_string());
-
-    let ts_set = ts_label.clone()
-        .separated_by(just('&').padded_by(ws.clone()))
-        .at_least(1)
-        .collect::<Vec<String>>()
-        .map(|labels| labels.into_iter().collect::<TypeStateSet>());
-
-    let ts_set_vec = ts_set.clone()
-        .separated_by(just('|').padded_by(ws.clone()))
-        .at_least(1)
-        .collect::<Vec<TypeStateSet>>();
-
     let sig_input = ident.clone()
         .then(ts_set_vec.clone().delimited_by(
             just('<').padded_by(ws.clone()),
@@ -372,15 +384,32 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
             just('>').padded_by(ws.clone()),
         ));
 
-    let signature = just("::").padded_by(ws.clone())
-        .ignore_then(sig_input)
-        .then_ignore(just("->").padded_by(ws.clone()))
-        .then(sig_output)
-        .map(|((periph, input_states), (_periph_out, output_state))| ast::TypeState {
-            peripheral: periph,
-            input_states,
-            output_state,
+    let type_param_bound = text::keyword("as").padded_by(ws.clone())
+            .to(ast::BoundKind::As)
+        .or(text::keyword("includes").padded_by(ws.clone())
+            .to(ast::BoundKind::Includes))
+        .then(
+            just('!').padded_by(ws.clone())
+                .ignore_then(text::ident().padded_by(ws.clone()))
+                .map(|s: &str| format!("!{s}"))
+                .or(text::ident().padded_by(ws.clone()).map(|s: &str| s.to_string()))
+        )
+        .or_not();
+
+    let type_param = ident.clone()
+        .then(type_param_bound)
+        .map(|(name, opt)| match opt {
+            None => ast::TypeParam { name, bound: String::new(), kind: ast::BoundKind::Includes },
+            Some((kind, bound)) => ast::TypeParam { name, bound, kind },
         });
+
+    let type_param_list = type_param
+        .separated_by(just(',').padded_by(ws.clone()))
+        .at_least(1)
+        .collect::<Vec<ast::TypeParam>>()
+        .delimited_by(just('<').padded_by(ws.clone()), just('>').padded_by(ws.clone()))
+        .or_not()
+        .map(|opt| opt.unwrap_or_default());
 
     /* 
      * Function Parser 
@@ -399,6 +428,14 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
         .then_ignore(just(':')).padded()
         .then(type_label.clone());
 
+    let signature_body = just("::").padded_by(ws.clone())
+        .ignore_then(sig_input)
+        .then_ignore(just("->").padded_by(ws.clone()))
+        .then(sig_output)
+        .map(|((periph, input_states), (_periph_out, output_state))| {
+            ast::TypeState { peripheral: periph, type_params: vec![], input_states, output_state }
+        });
+
     let function = text::keyword("fn").padded_by(ws.clone())
         .ignore_then(ident)
         .then(
@@ -408,19 +445,18 @@ fn parser<'src>() -> impl Parser<'src, &'src str, ast::Program, extra::Err<Simpl
                 .collect()
                 .delimited_by(just('(').padded_by(ws.clone()), just(')').padded_by(ws.clone())),
         )
+        .then(type_param_list)
         .then_ignore(just("->").padded_by(ws.clone()).then(type_label.clone()).or_not())
-        .then(signature.or_not())
+        .then(signature_body.or_not())
         .then(
             statement
                 .repeated()
                 .collect()
                 .delimited_by(just('{').padded_by(ws.clone()), just('}').padded_by(ws.clone())),
         )
-        .map(|(((name, args), signature), body)| ast::Function {
-            name,
-            args,
-            signature,
-            body,
+        .map(|((((name, args), type_params), sig_opt), body)| {
+            let signature = sig_opt.map(|mut sig| { sig.type_params = type_params; sig });
+            ast::Function { name, args, signature, body }
         });
 
     let global_const = text::keyword("const").padded_by(ws.clone())

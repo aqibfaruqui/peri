@@ -1,0 +1,98 @@
+// NS16550 UART peripheral for QEMU RISC-V 'virt' machine
+
+peripheral UART at 0x1000_0000 {
+    states: Unconfigured, LineConfigured, DLABSet, 
+            BaudSet, FifoConfigured, Ready;
+    initial: Unconfigured;
+
+    registers u8 {
+        RBR    at 0x00;   // read
+        THR    at 0x00;   // write
+        DLL    at 0x00;   // when DLAB=1
+        IER    at 0x01;   // 
+        DLM    at 0x01;   // when DLAB=1
+        IIR    at 0x02;   // read
+        FCR    at 0x02;   // write
+        LCR    at 0x03;   // bit 7 = DLAB
+        MCR    at 0x04;   // 
+        LSR    at 0x05;   // 
+        MSR    at 0x06;   // 
+    }
+}
+
+const BAUD_DIVISOR = 1;
+
+const IER_RDI  = 0x01;  // Receiver Data Interrupt
+const IER_THRI = 0x02;  // Transmitter Holding Register Empty Interrupt
+const IER_RLSI = 0x04;  // Receiver Line Status Interrupt
+const IER_MSI  = 0x08;  // Modem Status Interrupt
+
+const IIR_NO_INT = 0x01;    // No interrupt pending
+const IIR_IID    = 0x0E;    // Interrupt ID
+const IIR_RDI    = 0x04;    // Receiver Data Interrupt
+const IIR_THRI   = 0x02;    // Transmitter Holding Register Empty Interrupt
+const IIR_RLSI   = 0x06;    // Receiver Line Status Interrupt
+const IIR_MSI    = 0x00;    // Modem Status Interrupt
+
+const LCR_DLAB   = 0x80;    // Divisor latch access bit
+const LCR_SBC    = 0x40;    // Set break control
+const LCR_SPAR   = 0x20;    // Stick parity (?)
+const LCR_EPAR   = 0x10;    // Even parity select
+const LCR_PARITY = 0x08;    // Parity Enable
+const LCR_STOP   = 0x04;    // Stop bits: 0=1 bit, 1=2 bits
+const LCR_WLEN5  = 0x00;    // Wordlength: 5 bits
+const LCR_WLEN6  = 0x01;    // Wordlength: 6 bits
+const LCR_WLEN7  = 0x02;    // Wordlength: 7 bits
+const LCR_WLEN8  = 0x03;    // Wordlength: 8 bits
+
+fn uart_set_lcr() :: UART<Unconfigured> -> UART<LineConfigured> {
+    UART::LCR = LCR_WLEN8;
+}
+
+fn uart_set_lcr_dlab() :: UART<LineConfigured|Ready> -> UART<DLABSet> {
+    UART::LCR = UART::LCR | LCR_DLAB;
+}
+
+fn uart_set_baud(divisor: u16) :: UART<DLABSet> -> UART<DLABSet & BaudSet> {
+    UART::DLL = divisor & 0xFF;
+    UART::DLM = (divisor >> 8) & 0xFF;
+}
+
+fn uart_clear_lcr_dlab() :: UART<DLABSet & BaudSet> -> UART<BaudSet> {
+    UART::LCR = UART::LCR & 0x7F;
+}
+
+fn uart_enable_fifo() :: UART<BaudSet> -> UART<FifoConfigured> {
+    UART::FCR = 0x01;
+}
+
+fn uart_set_ier(interrupts: u8) :: UART<FifoConfigured> -> UART<Ready> {
+    UART::IER = interrupts;
+}
+
+fn uart_init(divisor: u16) :: UART<Unconfigured> -> UART<Ready> {
+    uart_set_lcr();
+    uart_set_lcr_dlab();
+    uart_set_baud(divisor);
+    uart_clear_lcr_dlab();
+    uart_enable_fifo();
+    uart_set_ier(IER_RDI);
+}
+
+fn uart_write_char(c: char) :: UART<Ready> -> UART<Ready> {
+    let ready = UART::LSR & 0x20;
+    while (ready == 0) {
+        ready = UART::LSR & 0x20;
+    }
+    UART::THR = c;
+}
+
+fn main() {
+    uart_init(BAUD_DIVISOR);
+    uart_write_char('H');    
+    uart_write_char('e');   
+    uart_write_char('l');   
+    uart_write_char('l');   
+    uart_write_char('o');   
+    uart_write_char('\n');    
+}
